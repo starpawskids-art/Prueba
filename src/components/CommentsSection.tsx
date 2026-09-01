@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import ReportButton from "./ReportButton";
 
 type Comment = {
@@ -11,7 +11,11 @@ type Comment = {
   author: { userId: string; name: string; username: string | null };
   parentCommentId: string | null;
   replyToName: string | null;
+  voteCount: number;
+  viewerHasVoted: boolean;
 };
+
+type SortMode = "recent" | "top";
 
 function timeAgo(ts: number): string {
   const minutes = Math.max(0, (Date.now() - ts) / 60000);
@@ -22,12 +26,46 @@ function timeAgo(ts: number): string {
   return `hace ${Math.round(hours / 24)} d`;
 }
 
+// Groups each top-level comment with all of its descendants (any depth —
+// the UI only shows one level of indent, but a reply-to-a-reply is still
+// possible via the API), preserving chronological order within a group.
+// Used only for "Más votados": sorting is by the group's root comment,
+// never scattering a reply away from the thread it belongs to.
+function groupIntoThreads(comments: Comment[]): Comment[][] {
+  const byId = new Map(comments.map((c) => [c.id, c]));
+  function rootIdOf(c: Comment): string {
+    let cur = c;
+    const seen = new Set<string>();
+    while (cur.parentCommentId && !seen.has(cur.id)) {
+      seen.add(cur.id);
+      const parent = byId.get(cur.parentCommentId);
+      if (!parent) break;
+      cur = parent;
+    }
+    return cur.id;
+  }
+
+  const groups = new Map<string, Comment[]>();
+  const order: string[] = [];
+  for (const c of comments) {
+    const rid = rootIdOf(c);
+    if (!groups.has(rid)) {
+      groups.set(rid, []);
+      order.push(rid);
+    }
+    groups.get(rid)!.push(c);
+  }
+  return order.map((rid) => groups.get(rid)!);
+}
+
 export default function CommentsSection({ pulseId }: { pulseId: string }) {
   const [comments, setComments] = useState<Comment[] | null>(null);
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [replyTarget, setReplyTarget] = useState<{ id: string; name: string } | null>(null);
+  const [sort, setSort] = useState<SortMode>("recent");
+  const [voteErrors, setVoteErrors] = useState<Record<string, string>>({});
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   async function load() {
@@ -71,11 +109,59 @@ export default function CommentsSection({ pulseId }: { pulseId: string }) {
     }
   }
 
+  async function vote(comment: Comment) {
+    setVoteErrors((prev) => ({ ...prev, [comment.id]: "" }));
+    // optimistic update
+    setComments(
+      (prev) =>
+        prev?.map((c) =>
+          c.id === comment.id
+            ? { ...c, viewerHasVoted: !c.viewerHasVoted, voteCount: c.voteCount + (c.viewerHasVoted ? -1 : 1) }
+            : c
+        ) ?? prev
+    );
+    const res = await fetch(`/api/comments/${comment.id}/vote`, { method: "POST" });
+    const data = (await res.json()) as { error?: string; voted?: boolean; voteCount?: number };
+    if (!res.ok) {
+      // revert optimistic update
+      setComments(
+        (prev) => prev?.map((c) => (c.id === comment.id ? { ...c, ...comment } : c)) ?? prev
+      );
+      setVoteErrors((prev) => ({ ...prev, [comment.id]: data.error ?? "No se pudo votar." }));
+    }
+  }
+
+  const displayGroups = useMemo(() => {
+    if (!comments) return [];
+    if (sort === "recent") return comments.length ? [comments] : [];
+    const groups = groupIntoThreads(comments);
+    const rootVotes = (g: Comment[]) => g.find((c) => !c.parentCommentId)?.voteCount ?? 0;
+    return groups.sort((a, b) => rootVotes(b) - rootVotes(a));
+  }, [comments, sort]);
+
   return (
     <div>
-      <h2 className="text-sm font-semibold text-muted">
-        Contexto de la comunidad {comments && comments.length > 0 ? `(${comments.length})` : ""}
-      </h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-muted">
+          Contexto de la comunidad {comments && comments.length > 0 ? `(${comments.length})` : ""}
+        </h2>
+        {comments && comments.length > 1 && (
+          <div className="flex gap-1 text-[11px]">
+            <button
+              onClick={() => setSort("recent")}
+              className={`rounded-full px-2 py-0.5 ${sort === "recent" ? "bg-accent text-white" : "text-muted"}`}
+            >
+              Recientes
+            </button>
+            <button
+              onClick={() => setSort("top")}
+              className={`rounded-full px-2 py-0.5 ${sort === "top" ? "bg-accent text-white" : "text-muted"}`}
+            >
+              Más votados
+            </button>
+          </div>
+        )}
+      </div>
       <p className="mt-1 text-xs text-muted">
         Aporta lo que sepas — enlaces, matices, lo que las fuentes no cuentan.
       </p>
@@ -119,7 +205,7 @@ export default function CommentsSection({ pulseId }: { pulseId: string }) {
         {comments?.length === 0 && (
           <p className="text-xs text-muted">Todavía nadie ha aportado contexto. Sé el primero.</p>
         )}
-        {comments?.map((c) => (
+        {displayGroups.flat().map((c) => (
           <div
             key={c.id}
             className={`rounded-xl border border-border bg-surface p-3 text-sm ${c.parentCommentId ? "ml-4 border-l-2 border-l-accent/40" : ""}`}
@@ -139,14 +225,26 @@ export default function CommentsSection({ pulseId }: { pulseId: string }) {
             )}
             <p className="mt-1 text-foreground">{c.body}</p>
             <div className="mt-1 flex items-center justify-between">
-              <button
-                onClick={() => startReply(c)}
-                className="text-[11px] text-muted underline underline-offset-2"
-              >
-                Responder
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => startReply(c)}
+                  className="text-[11px] text-muted underline underline-offset-2"
+                >
+                  Responder
+                </button>
+                <button
+                  onClick={() => vote(c)}
+                  className={`flex items-center gap-1 text-[11px] font-medium ${c.viewerHasVoted ? "text-accent" : "text-muted"}`}
+                >
+                  <span aria-hidden>{c.viewerHasVoted ? "★" : "☆"}</span>
+                  {c.voteCount > 0 ? c.voteCount : "Valorar"}
+                </button>
+              </div>
               <ReportButton targetType="comment" targetId={c.id} />
             </div>
+            {voteErrors[c.id] && (
+              <p className="mt-1 text-[11px] text-[var(--confidence-baja)]">{voteErrors[c.id]}</p>
+            )}
           </div>
         ))}
       </div>

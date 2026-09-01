@@ -89,6 +89,13 @@ contexto aportado en una Pulse concreta merece que la sigas.
   "Aportes recientes" — `src/lib/social/comments.ts`. Responder a un comentario dispara una
   notificación push real ("Respondieron a tu comentario"), salvo que te respondas a ti mismo —
   mismo tope compartido de 3/24h que el resto de categorías.
+- **Votos en comentarios** — un voto simple (no like/dislike, solo "esto aportó algo"), sin
+  autovoto, con el contador y "★ ya votado" recalculados por espectador (`viewerHasVoted` depende
+  de quién pregunta, `voteCount` no). El orden "Más votados" agrupa cada hilo bajo su comentario
+  raíz antes de ordenar — una respuesta con pocos votos no se separa nunca del hilo con más votos
+  al que pertenece. Al cruzar 3 votos por primera vez dispara "Tu comentario recibió mucha
+  atención" (una sola vez por comentario, aunque luego se desvote y se vuelva a votar) —
+  `ATTENTION_VOTE_THRESHOLD` en `src/lib/social/comments.ts`, mismo tope de 3/24h compartido.
 - **Grafo social** — seguir a otras personas (no solo Pulses o temas) desde su perfil público.
   La pestaña "Sigues → Personas" muestra un feed de actividad real: los aportes de contexto más
   recientes de la gente que sigues, en cualquier Pulse — `src/lib/social/follows.ts`. Seguir a
@@ -237,6 +244,18 @@ el servidor tras cambiar `.env.local`.
   el hilo se guardó correctamente ("↳ en respuesta a A") y el envío se completó sin error. Probé
   también el caso contrario: A respondiéndose a sí mismo no generó una segunda notificación
   (`notifications_sent` se quedó en 1 tras esa respuesta).
+- **Votos en comentarios y "Tu comentario recibió mucha atención": verificados.** Con cuatro
+  identidades curl independientes: A comentó, A intentando votarse a sí mismo fue rechazado
+  (400, "No puedes votar tu propio comentario"), B/C/D votaron en orden (`voteCount` 1→2→3) y al
+  cruzar el umbral de 3 se envió exactamente un `comment_attention` real (verificado en
+  `notifications_sent` y sin errores en el log del servidor) hacia una suscripción con clave EC
+  real. Desvotar y volver a votar (B) devolvió el contador a 3 sin generar una segunda
+  notificación — el `attention_notified_at` de la fila ya bloqueaba el reenvío. El contador y
+  "ya votado" cambian según quién pregunta: A (el autor) lo ve en 3 sin haber votado, B lo ve en 3
+  habiendo votado. Con Playwright confirmé visualmente que "Más votados" agrupa cada hilo bajo su
+  raíz antes de ordenar — una respuesta con 0 votos quedó justo después de su comentario padre con
+  3 votos, por delante de un comentario raíz distinto con solo 1 voto, sin dispersarse por su
+  propio contador.
 - **Suscripción desde el navegador (`pushManager.subscribe()`): NO pude completarla en este
   sandbox.** Chrome necesita contactar además `accounts.google.com` y
   `android.clients.google.com` para el registro (más allá de `fcm.googleapis.com`, que sí es
@@ -270,15 +289,13 @@ es un cambio localizado a `src/lib/db.ts` cuando haga falta escalar más allá d
    mejoran con identidad + grafo social + cuentas reales activos.
 2. Verificación de email y recuperación de contraseña — necesitan un servicio de envío de correo;
    ver la sección "Autenticación" arriba.
-3. "Un comentario tuyo recibió mucha atención" (votos/reacciones en comentarios) — de momento
-   comentarios y respuestas no tienen ninguna señal de calidad más allá de moderarlos.
-4. Sustituir el resumen por plantillas con un LLM real (guardando la regla "no inventar hechos" y
+3. Sustituir el resumen por plantillas con un LLM real (guardando la regla "no inventar hechos" y
    la trazabilidad a fuentes) — y de paso, un clasificador de tema vía LLM en vez de por palabras
    clave, para no depender de mantener diccionarios por idioma a mano.
-5. Zona horaria por usuario para el resumen diario (hoy es una hora UTC fija para todos).
-6. Añadir más fuentes por idioma más allá de Wikipedia (p. ej. GDELT, agregadores de prensa
+4. Zona horaria por usuario para el resumen diario (hoy es una hora UTC fija para todos).
+5. Añadir más fuentes por idioma más allá de Wikipedia (p. ej. GDELT, agregadores de prensa
    regionales) para que el feed no-inglés tenga la misma profundidad que el inglés.
-7. Moderación real (proveedor externo) en vez del blocklist de `src/lib/moderation.ts`, antes de
+6. Moderación real (proveedor externo) en vez del blocklist de `src/lib/moderation.ts`, antes de
    cualquier lanzamiento público — el blocklist es un punto de partida de MVP, no una solución de
    confianza y seguridad de producción.
-8. Solo si la retención es buena: capa FATE (predicciones), rankings, misterios colectivos.
+7. Solo si la retención es buena: capa FATE (predicciones), rankings, misterios colectivos.

@@ -5,7 +5,8 @@ import { notifyCommentReply } from "@/lib/push/social";
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  return NextResponse.json({ comments: getCommentsForPulse(id) });
+  const viewerId = await getOrCreateUserId();
+  return NextResponse.json({ comments: getCommentsForPulse(id, viewerId) });
 }
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {

@@ -98,9 +98,18 @@ db.exec(`
     body TEXT NOT NULL,
     created_at INTEGER NOT NULL,
     hidden_at INTEGER,
-    parent_comment_id TEXT
+    parent_comment_id TEXT,
+    attention_notified_at INTEGER
   );
   CREATE INDEX IF NOT EXISTS idx_comments_pulse ON pulse_comments(pulse_id, created_at);
+
+  CREATE TABLE IF NOT EXISTS comment_votes (
+    comment_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (comment_id, user_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_comment_votes_comment ON comment_votes(comment_id);
 
   CREATE TABLE IF NOT EXISTS interactions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -169,6 +178,7 @@ const migrations: string[] = [
   "ALTER TABLE users ADD COLUMN display_name TEXT",
   "ALTER TABLE users ADD COLUMN bio TEXT",
   "ALTER TABLE pulse_comments ADD COLUMN parent_comment_id TEXT",
+  "ALTER TABLE pulse_comments ADD COLUMN attention_notified_at INTEGER",
 ];
 for (const statement of migrations) {
   try {

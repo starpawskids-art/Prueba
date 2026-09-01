@@ -53,3 +53,27 @@ export async function notifyCommentReply(
   await sendToUser(subs, { title, body, url });
   logSent(parentAuthorId, pulseId, "comment_reply", title, body);
 }
+
+// Fired once per comment, the moment it first crosses
+// ATTENTION_VOTE_THRESHOLD votes — dedup already happened in
+// toggleCommentVote (crossedThreshold only comes back true once).
+export async function notifyCommentAttention(
+  authorId: string,
+  pulseId: string,
+  commentBody: string,
+  voteCount: number
+): Promise<void> {
+  if (countSentInWindow(authorId) >= CAP_PER_ROLLING_DAY) return;
+
+  const subs = db
+    .prepare(`SELECT * FROM push_subscriptions WHERE user_id = ?`)
+    .all(authorId) as SubscriptionRow[];
+  if (subs.length === 0) return;
+
+  const title = "Tu comentario recibió mucha atención";
+  const body = `${voteCount} personas valoraron: "${commentBody}"`;
+  const url = `/pulse/${pulseId}`;
+
+  await sendToUser(subs, { title, body, url });
+  logSent(authorId, pulseId, "comment_attention", title, body);
+}
