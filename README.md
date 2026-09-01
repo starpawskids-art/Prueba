@@ -44,12 +44,13 @@ Un pipeline de descubrimiento **real**, no una maqueta con datos falsos:
    feed, el contador de cambios y la ingesta filtran/generan contenido en ese idioma —
    `src/lib/pipeline/rank.ts`, `POST /api/language`.
 10. **Notificaciones push reales** — Web Push estándar (service worker + VAPID), sin Firebase ni
-    ningún SDK de terceros. Tras cada ingesta, `src/lib/push/dispatch.ts` decide a quién avisar
-    según dos de las categorías del documento de producto — "algo que sigues cambió" (una Pulse
-    que sigues se actualizó) y "tendencia excepcional" (momentum muy alto en un tema tuyo) — con
-    un tope de 3 avisos/24h por usuario. El envío en sí (`src/lib/push/send.ts`) usa la librería
-    `web-push` para cifrar y firmar cada mensaje contra el endpoint real del navegador del
-    usuario. Activable desde Perfil.
+    ningún SDK de terceros. Implementa las tres categorías del documento de producto: "algo que
+    sigues cambió" y "tendencia excepcional" tras cada ingesta (`src/lib/push/dispatch.ts`), y
+    "resumen de tu día" una vez al día a hora fija UTC (`src/lib/push/digest.ts`) — nunca manda un
+    resumen de "0 cambios", y las tres comparten el mismo tope de 3 avisos/24h por usuario
+    (`src/lib/push/notifications-log.ts`). El envío en sí (`src/lib/push/send.ts`) usa la
+    librería `web-push` para cifrar y firmar cada mensaje contra el endpoint real del navegador
+    del usuario. Activable desde Perfil.
 
 Un proceso en segundo plano (`src/instrumentation.ts` → `src/lib/pipeline/poller.ts`) ejecuta la
 ingesta cada 5 minutos mientras el servidor esté vivo, así el "qué ha cambiado" es real y no un
@@ -143,6 +144,12 @@ el servidor tras cambiar `.env.local`.
   lo confirmé disparando una ingesta adicional después.
 - **Categorías "algo que sigues cambió" / "tendencia excepcional": verificadas.** Seguí una Pulse
   real, disparé una ingesta y el sistema generó ambos tipos de aviso con el texto correcto.
+- **"Resumen de tu día": verificado.** `/admin` tiene un botón "Enviar resumen diario ahora
+  (test)" que fuerza el envío saltándose solo la comprobación de la hora UTC (el resto de reglas
+  — tope compartido, no repetir antes de ~20h, no mandar un resumen de "0 cambios" — se respetan
+  igual). Lo disparé con datos reales: generó "50 cambios relevantes hoy — el más destacado:
+  ...", el envío se completó sin error (mismo resultado que las otras categorías) y una segunda
+  llamada inmediata devolvió 0 por el intervalo mínimo.
 - **Suscripción desde el navegador (`pushManager.subscribe()`): NO pude completarla en este
   sandbox.** Chrome necesita contactar además `accounts.google.com` y
   `android.clients.google.com` para el registro (más allá de `fcm.googleapis.com`, que sí es
@@ -157,9 +164,10 @@ el servidor tras cambiar `.env.local`.
   (no es detectable ni evitable). Hace falta `chromium.launchPersistentContext(...)` con un
   perfil real. Un usuario normal abriendo Chrome nunca se topa con esto.
 
-"Resumen de tu día" (la tercera categoría de notificaciones del documento de producto) **no está
-implementada** — necesita un disparador una vez al día a una hora fija, y este poller de 5 minutos
-no es el sitio natural para eso.
+El horario del resumen diario se controla con `DIGEST_HOUR_UTC` (por defecto 9, es decir 09:00
+UTC). No hay todavía zona horaria por usuario — todo el mundo recibe el resumen a la misma hora
+UTC independientemente de dónde esté; guardar la zona horaria del usuario (o inferirla del
+navegador en el registro de la suscripción) es la mejora obvia siguiente si esto pasa a producción.
 
 ## Base de datos
 
@@ -174,7 +182,7 @@ es un cambio localizado a `src/lib/db.ts` cuando haga falta escalar más allá d
 2. Sustituir el resumen por plantillas con un LLM real (guardando la regla "no inventar hechos" y
    la trazabilidad a fuentes) — y de paso, un clasificador de tema vía LLM en vez de por palabras
    clave, para no depender de mantener diccionarios por idioma a mano.
-3. Categoría de notificación "resumen de tu día" (digest diario a hora fija).
+3. Zona horaria por usuario para el resumen diario (hoy es una hora UTC fija para todos).
 4. Añadir más fuentes por idioma más allá de Wikipedia (p. ej. GDELT, agregadores de prensa
    regionales) para que el feed no-inglés tenga la misma profundidad que el inglés.
 5. Solo si la retención es buena: capa FATE (predicciones), rankings, comunidad.

@@ -1,13 +1,8 @@
-import { randomUUID } from "node:crypto";
 import db from "../db";
 import { effectiveLanguage, getUser } from "../user";
 import { sendToUser, SubscriptionRow } from "./send";
+import { CAP_PER_ROLLING_DAY, countSentInWindow, logSent } from "./notifications-log";
 
-// Per the product doc's notification principles: scarce, justified, and
-// capped — "1-3 pushes/día por usuario". We use a rolling 24h window
-// rather than a calendar day to sidestep timezone bookkeeping.
-const CAP_PER_ROLLING_DAY = 3;
-const ROLLING_WINDOW_MS = 24 * 60 * 60 * 1000;
 const EXCEPTIONAL_MOMENTUM_THRESHOLD = 0.85;
 
 type PulseRow = {
@@ -20,20 +15,6 @@ type PulseRow = {
   updated_at: number;
   lang: string;
 };
-
-function countSentInWindow(userId: string): number {
-  const since = Date.now() - ROLLING_WINDOW_MS;
-  const row = db
-    .prepare(`SELECT COUNT(*) as n FROM notifications_sent WHERE user_id = ? AND sent_at >= ?`)
-    .get(userId, since) as { n: number };
-  return row.n;
-}
-
-function logSent(userId: string, pulseId: string, type: string, title: string, body: string) {
-  db.prepare(
-    `INSERT INTO notifications_sent (id, user_id, pulse_id, type, title, body, sent_at) VALUES (?, ?, ?, ?, ?, ?, ?)`
-  ).run(randomUUID(), userId, pulseId, type, title, body, Date.now());
-}
 
 // Called once after each ingestion run finishes. Only looks at pulses this
 // exact run touched (updated_at === runTimestamp, which every upsert in
@@ -115,8 +96,3 @@ export async function dispatchNotifications(runTimestamp: number): Promise<numbe
 
   return notificationsSent;
 }
-
-// "Resumen de tu día" (daily digest) from the product doc's notification
-// categories is NOT implemented — it needs a once-a-day scheduled trigger
-// at a sensible local hour, which this 5-minute poller isn't suited for.
-// See README.

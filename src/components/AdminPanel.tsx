@@ -17,6 +17,8 @@ export default function AdminPanel() {
   const [status, setStatus] = useState<Status | null>(null);
   const [running, setRunning] = useState(false);
   const [lastNotificationsSent, setLastNotificationsSent] = useState<number | null>(null);
+  const [digestRunning, setDigestRunning] = useState(false);
+  const [lastDigestSent, setLastDigestSent] = useState<number | null>(null);
 
   async function load() {
     const res = await fetch("/api/ingest");
@@ -39,6 +41,17 @@ export default function AdminPanel() {
       await load();
     } finally {
       setRunning(false);
+    }
+  }
+
+  async function triggerDigest() {
+    setDigestRunning(true);
+    try {
+      const res = await fetch("/api/push/digest", { method: "POST" });
+      const data = (await res.json()) as { sent: number };
+      setLastDigestSent(data.sent);
+    } finally {
+      setDigestRunning(false);
     }
   }
 
@@ -69,6 +82,21 @@ export default function AdminPanel() {
       {lastNotificationsSent !== null && (
         <p className="text-center text-xs text-muted">
           Última ejecución manual: {lastNotificationsSent} notificación(es) push enviada(s).
+        </p>
+      )}
+
+      <button
+        onClick={triggerDigest}
+        disabled={digestRunning}
+        className="rounded-xl bg-surface-raised py-2.5 text-sm font-semibold text-foreground disabled:opacity-50"
+      >
+        {digestRunning ? "Enviando resumen…" : "Enviar resumen diario ahora (test)"}
+      </button>
+      {lastDigestSent !== null && (
+        <p className="text-center text-xs text-muted">
+          {lastDigestSent === 0
+            ? "0 resúmenes enviados (sin cambios que reportar, tope alcanzado, o ya se envió uno recientemente)."
+            : `${lastDigestSent} resumen(es) diario(s) enviado(s).`}
         </p>
       )}
 
