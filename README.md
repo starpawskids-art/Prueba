@@ -282,6 +282,19 @@ deliberadamente la opción más simple: cero infraestructura que levantar para p
 central. Migrar a Postgres/Redis (como propone la arquitectura técnica del documento de producto)
 es un cambio localizado a `src/lib/db.ts` cuando haga falta escalar más allá de un único proceso.
 
+## Despliegue a producción
+
+**Por qué no Vercel:** Vercel (y cualquier hosting "serverless" equivalente) borra el disco en
+cada request — la base de datos SQLite de este proyecto necesita un proceso Node siempre vivo con
+un disco persistente de verdad. Railway, Render o Fly.io son la opción correcta aquí, todos con
+plan gratuito/muy barato y un volumen persistente montable en un par de clics. `src/lib/db.ts` lee
+la ruta de la base de datos de la variable `DATA_DIR` si existe (si no, usa `./data` como en local)
+— así que basta con apuntar `DATA_DIR` al punto de montaje del volumen persistente del host.
+
+Variables de entorno necesarias en producción — las mismas de `.env.example`:
+`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `NEXT_PUBLIC_VAPID_PUBLIC_KEY`,
+`DIGEST_HOUR_UTC` (opcional) y `DATA_DIR` (obligatoria en producción, apuntando al volumen).
+
 ## Siguientes pasos sugeridos
 
 1. **Medir de verdad** — desplegar, conseguir usuarios reales, y mirar el panel de retención de

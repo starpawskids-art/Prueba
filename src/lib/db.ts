@@ -2,7 +2,11 @@ import Database from "better-sqlite3";
 import path from "node:path";
 import fs from "node:fs";
 
-const dataDir = path.join(process.cwd(), "data");
+// DATA_DIR lets a production host point this at a persistent-disk mount
+// (e.g. a Railway/Render/Fly volume) instead of the app's own folder, which
+// on most hosts is wiped on every redeploy. Unset locally, so local dev is
+// unchanged.
+const dataDir = process.env.DATA_DIR ?? path.join(process.cwd(), "data");
 if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 
 const dbPath = path.join(dataDir, "pulse.db");
