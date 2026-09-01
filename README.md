@@ -95,10 +95,21 @@ sandbox concreta simplemente no hay datos que mostrar salvo en inglés (vía Git
 restricción de red de arriba; la app lo comunica con un estado vacío explícito en vez de fingir
 contenido.
 
-La clasificación de tema (`src/lib/topics.ts`) sigue siendo por palabras clave en inglés, así que
-títulos en otros idiomas caen por defecto en "Curiosidades" salvo que el título contenga alguna
-palabra clave en inglés. Mejorar esto (clasificador por idioma, o vía LLM) es la mejora obvia
-siguiente y está anotada abajo.
+### Clasificación de tema por idioma
+
+`src/lib/topics.ts` clasifica cada Pulse por palabras clave — y ahora tiene un diccionario propio
+por cada uno de los 6 idiomas soportados (antes solo tenía inglés, así que todo lo no-inglés caía
+en "Curiosidades" por defecto). El matching usa comprobación de límites de palabra consciente de
+Unicode (no la `\b` nativa de JS, que es solo ASCII y falla con letras acentuadas como á/ñ/ü/ç),
+para evitar falsos positivos con palabras clave cortas sin romper con acentos.
+
+Limitación conocida: el alemán compone palabras ("Bundesregierung" = "Bundes" + "regierung"), así
+que una palabra clave suelta como "regierung" no encaja dentro del compuesto — el mismo control de
+límites que evita falsos positivos en el resto de idiomas también bloquea coincidencias legítimas
+de compuestos. Donde importa, el diccionario incluye el compuesto explícitamente (p. ej.
+"bundesregierung", "klimapolitik") en vez de intentar descomponer compuestos en general. Un
+clasificador vía LLM sería la solución robusta a largo plazo — sigue anotado como mejora futura
+abajo.
 
 ## Base de datos
 
@@ -110,11 +121,10 @@ es un cambio localizado a `src/lib/db.ts` cuando haga falta escalar más allá d
 ## Siguientes pasos sugeridos (por orden, según el documento de producto)
 
 1. Medir D1/D7/D30 con usuarios reales — la métrica decisiva antes de construir nada más.
-2. Clasificación de tema por idioma (o vía LLM) para que el contenido no-inglés no caiga siempre
-   en "Curiosidades".
-3. Sustituir el resumen por plantillas con un LLM real (guardando la regla "no inventar hechos" y
-   la trazabilidad a fuentes).
-4. Añadir push notifications reales (1–3/día, basadas en follows).
-5. Añadir más fuentes por idioma más allá de Wikipedia (p. ej. GDELT, agregadores de prensa
+2. Sustituir el resumen por plantillas con un LLM real (guardando la regla "no inventar hechos" y
+   la trazabilidad a fuentes) — y de paso, un clasificador de tema vía LLM en vez de por palabras
+   clave, para no depender de mantener diccionarios por idioma a mano.
+3. Añadir push notifications reales (1–3/día, basadas en follows).
+4. Añadir más fuentes por idioma más allá de Wikipedia (p. ej. GDELT, agregadores de prensa
    regionales) para que el feed no-inglés tenga la misma profundidad que el inglés.
-6. Solo si la retención es buena: capa FATE (predicciones), rankings, comunidad.
+5. Solo si la retención es buena: capa FATE (predicciones), rankings, comunidad.

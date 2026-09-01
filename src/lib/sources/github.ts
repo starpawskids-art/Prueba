@@ -65,7 +65,7 @@ export async function fetchGithubCandidates(): Promise<RawCandidate[]> {
       url: repo.html_url,
       metric: repo.stargazers_count,
       metricKind: "estrellas en GitHub",
-      topicHint: classifyTopic(`${repo.full_name} ${repo.description ?? ""} ${repo.language ?? ""}`, "Tecnología"),
+      topicHint: classifyTopic(`${repo.full_name} ${repo.description ?? ""} ${repo.language ?? ""}`, "en", "Tecnología"),
       lang: "en",
     } satisfies RawCandidate;
   });

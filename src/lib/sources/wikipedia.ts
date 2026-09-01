@@ -69,7 +69,7 @@ export async function fetchWikipediaCandidates(lang: Language): Promise<RawCandi
       url: `https://${lang}.wikipedia.org/wiki/${a.article}`,
       metric: a.views,
       metricKind: "vistas en el último día",
-      topicHint: classifyTopic(title, "Curiosidades"),
+      topicHint: classifyTopic(title, lang, "Curiosidades"),
       lang,
     } satisfies RawCandidate;
   });

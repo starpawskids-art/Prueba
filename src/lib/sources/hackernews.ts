@@ -49,7 +49,7 @@ export async function fetchHackerNewsCandidates(): Promise<RawCandidate[]> {
       url: item.url ?? `https://news.ycombinator.com/item?id=${item.id}`,
       metric,
       metricKind: "engagement (puntos + comentarios)",
-      topicHint: classifyTopic(item.title, "Tecnología"),
+      topicHint: classifyTopic(item.title, "en", "Tecnología"),
       lang: "en",
     });
   }
