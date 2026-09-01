@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { getPulseById } from "@/lib/pipeline/rank";
 import { ageMinutesSince, confidenceLabel, formatMinutesAgo } from "@/lib/format";
 import PulseDetailActions from "@/components/PulseDetailActions";
+import ReportButton from "@/components/ReportButton";
 
 export default async function PulseDetailPage({ params }: PageProps<"/pulse/[id]">) {
   const { id } = await params;
@@ -22,7 +23,10 @@ export default async function PulseDetailPage({ params }: PageProps<"/pulse/[id]
         <span className="rounded-full bg-accent-soft px-2 py-0.5 font-medium text-accent">
           {pulse.topic}
         </span>
-        <span className={confidence.className}>{confidence.label}</span>
+        <div className="flex items-center gap-2">
+          <span className={confidence.className}>{confidence.label}</span>
+          <ReportButton targetType="pulse" targetId={pulse.id} />
+        </div>
       </div>
 
       <h1 className="text-2xl font-bold leading-tight">{pulse.title}</h1>

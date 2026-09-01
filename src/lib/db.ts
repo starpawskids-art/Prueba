@@ -50,7 +50,8 @@ db.exec(`
     sources_json TEXT NOT NULL,
     detected_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
-    lang TEXT NOT NULL DEFAULT 'en'
+    lang TEXT NOT NULL DEFAULT 'en',
+    hidden_at INTEGER
   );
 
   CREATE TABLE IF NOT EXISTS users (
@@ -59,8 +60,46 @@ db.exec(`
     last_visit_at INTEGER,
     interests_json TEXT NOT NULL DEFAULT '[]',
     custom_interests_json TEXT NOT NULL DEFAULT '[]',
-    language TEXT
+    language TEXT,
+    username TEXT,
+    display_name TEXT,
+    bio TEXT
   );
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username) WHERE username IS NOT NULL;
+
+  CREATE TABLE IF NOT EXISTS visits (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    visited_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_visits_user ON visits(user_id, visited_at);
+
+  CREATE TABLE IF NOT EXISTS reports (
+    id TEXT PRIMARY KEY,
+    reporter_user_id TEXT NOT NULL,
+    target_type TEXT NOT NULL,
+    target_id TEXT NOT NULL,
+    reason TEXT,
+    created_at INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending'
+  );
+
+  CREATE TABLE IF NOT EXISTS follows_user (
+    follower_id TEXT NOT NULL,
+    followee_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (follower_id, followee_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS pulse_comments (
+    id TEXT PRIMARY KEY,
+    pulse_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    body TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    hidden_at INTEGER
+  );
+  CREATE INDEX IF NOT EXISTS idx_comments_pulse ON pulse_comments(pulse_id, created_at);
 
   CREATE TABLE IF NOT EXISTS interactions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -108,6 +147,10 @@ const migrations: string[] = [
   "ALTER TABLE pulses ADD COLUMN lang TEXT NOT NULL DEFAULT 'en'",
   "ALTER TABLE users ADD COLUMN custom_interests_json TEXT NOT NULL DEFAULT '[]'",
   "ALTER TABLE users ADD COLUMN language TEXT",
+  "ALTER TABLE pulses ADD COLUMN hidden_at INTEGER",
+  "ALTER TABLE users ADD COLUMN username TEXT",
+  "ALTER TABLE users ADD COLUMN display_name TEXT",
+  "ALTER TABLE users ADD COLUMN bio TEXT",
 ];
 for (const statement of migrations) {
   try {

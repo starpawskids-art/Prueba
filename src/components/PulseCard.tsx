@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { Pulse } from "@/lib/types";
 import { confidenceLabel, formatMinutesAgo } from "@/lib/format";
+import ReportButton from "./ReportButton";
 
 async function sendInteraction(pulseId: string, type: string) {
   try {
@@ -51,7 +52,10 @@ export default function PulseCard({
             </span>
           )}
         </div>
-        <span className={confidence.className}>{confidence.label}</span>
+        <div className="flex items-center gap-2">
+          <span className={confidence.className}>{confidence.label}</span>
+          <ReportButton targetType="pulse" targetId={pulse.id} />
+        </div>
       </div>
 
       <Link href={`/pulse/${pulse.id}`} className="flex flex-col gap-1.5">

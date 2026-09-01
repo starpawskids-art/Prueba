@@ -80,6 +80,8 @@ export function setLanguage(id: string, language: Language | null) {
 export function touchVisit(id: string): number | null {
   const user = getUser(id);
   const previous = user?.lastVisitAt ?? null;
-  db.prepare(`UPDATE users SET last_visit_at = ? WHERE id = ?`).run(Date.now(), id);
+  const now = Date.now();
+  db.prepare(`UPDATE users SET last_visit_at = ? WHERE id = ?`).run(now, id);
+  db.prepare(`INSERT INTO visits (user_id, visited_at) VALUES (?, ?)`).run(id, now);
   return previous;
 }

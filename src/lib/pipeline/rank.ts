@@ -83,7 +83,9 @@ export function getFeed(userId: string, limit = 10): RankedPulse[] {
 
   const since = Date.now() - RECENCY_WINDOW_MS;
   const rows = db
-    .prepare(`SELECT * FROM pulses WHERE updated_at >= ? AND lang = ? ORDER BY updated_at DESC`)
+    .prepare(
+      `SELECT * FROM pulses WHERE updated_at >= ? AND lang = ? AND hidden_at IS NULL ORDER BY updated_at DESC`
+    )
     .all(since, language) as PulseRow[];
 
   if (rows.length === 0) return [];
@@ -216,7 +218,7 @@ export function getPulseById(id: string): Pulse | null {
 export function countChangesSince(timestamp: number | null, language: Language): number {
   if (timestamp === null) return 0;
   const row = db
-    .prepare(`SELECT COUNT(*) as n FROM pulses WHERE detected_at > ? AND lang = ?`)
+    .prepare(`SELECT COUNT(*) as n FROM pulses WHERE detected_at > ? AND lang = ? AND hidden_at IS NULL`)
     .get(timestamp, language) as { n: number };
   return row.n;
 }
