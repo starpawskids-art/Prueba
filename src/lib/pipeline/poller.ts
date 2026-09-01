@@ -1,4 +1,5 @@
 import { runIngestion } from "./run";
+import { dispatchNotifications } from "../push/dispatch";
 
 const POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -10,15 +11,21 @@ export function startPoller() {
   if (global.__pulsePollerStarted) return;
   global.__pulsePollerStarted = true;
 
-  const tick = () => {
-    runIngestion()
-      .then((result) => {
-        console.log(
-          `[pulse] ingestion run: ${result.signalsSeen} señales, ${result.pulsesGenerated} pulses` +
-            (result.errors.length ? ` (errores: ${result.errors.join("; ")})` : "")
-        );
-      })
-      .catch((err) => console.error("[pulse] ingestion run failed", err));
+  const tick = async () => {
+    try {
+      const result = await runIngestion();
+      console.log(
+        `[pulse] ingestion run: ${result.signalsSeen} señales, ${result.pulsesGenerated} pulses` +
+          (result.errors.length ? ` (errores: ${result.errors.join("; ")})` : "")
+      );
+
+      if (result.pulsesGenerated > 0) {
+        const sent = await dispatchNotifications(result.ranAt);
+        if (sent > 0) console.log(`[pulse] ${sent} notificación(es) push enviada(s)`);
+      }
+    } catch (err) {
+      console.error("[pulse] ingestion run failed", err);
+    }
   };
 
   tick();

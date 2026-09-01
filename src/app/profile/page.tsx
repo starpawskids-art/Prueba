@@ -1,5 +1,6 @@
 import BottomNav from "@/components/BottomNav";
 import ProfileInterests from "@/components/ProfileInterests";
+import PushOptIn from "@/components/PushOptIn";
 import { effectiveLanguage, getOrCreateUserId, getUser } from "@/lib/user";
 import db from "@/lib/db";
 
@@ -58,6 +59,8 @@ export default async function ProfilePage() {
           initialCustomInterests={user?.customInterests ?? []}
           initialLanguage={effectiveLanguage(user)}
         />
+
+        <PushOptIn />
 
         <a
           href="/admin"

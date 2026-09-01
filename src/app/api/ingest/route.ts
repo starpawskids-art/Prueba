@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { runIngestion } from "@/lib/pipeline/run";
+import { dispatchNotifications } from "@/lib/push/dispatch";
 import db from "@/lib/db";
 
 // Manual trigger, used by the admin/debug screen — the poller
@@ -7,7 +8,8 @@ import db from "@/lib/db";
 // minutes for the life of the server process.
 export async function POST() {
   const result = await runIngestion();
-  return NextResponse.json(result);
+  const notificationsSent = result.pulsesGenerated > 0 ? await dispatchNotifications(result.ranAt) : 0;
+  return NextResponse.json({ ...result, notificationsSent });
 }
 
 export async function GET() {
@@ -16,5 +18,8 @@ export async function GET() {
     .all();
   const signalCount = (db.prepare(`SELECT COUNT(*) as n FROM signals`).get() as { n: number }).n;
   const pulseCount = (db.prepare(`SELECT COUNT(*) as n FROM pulses`).get() as { n: number }).n;
-  return NextResponse.json({ runs, signalCount, pulseCount });
+  const pushSubscriptionCount = (
+    db.prepare(`SELECT COUNT(*) as n FROM push_subscriptions`).get() as { n: number }
+  ).n;
+  return NextResponse.json({ runs, signalCount, pulseCount, pushSubscriptionCount });
 }

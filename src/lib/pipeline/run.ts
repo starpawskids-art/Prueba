@@ -163,6 +163,7 @@ export type IngestResult = {
   signalsSeen: number;
   pulsesGenerated: number;
   errors: string[];
+  ranAt: number;
 };
 
 export async function runIngestion(): Promise<IngestResult> {
@@ -224,7 +225,7 @@ export async function runIngestion(): Promise<IngestResult> {
     `UPDATE ingest_runs SET finished_at=?, signals_seen=?, pulses_generated=?, error=? WHERE id=?`
   ).run(Date.now(), deduped.length, pulsesGenerated, errors.length ? errors.join(" | ") : null, runId);
 
-  return { signalsSeen: deduped.length, pulsesGenerated, errors };
+  return { signalsSeen: deduped.length, pulsesGenerated, errors, ranAt: now };
 }
 
 export const NOVELTY_HALFLIFE = NOVELTY_HALFLIFE_MINUTES;

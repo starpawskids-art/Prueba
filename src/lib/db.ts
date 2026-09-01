@@ -79,6 +79,25 @@ db.exec(`
     pulses_generated INTEGER DEFAULT 0,
     error TEXT
   );
+
+  CREATE TABLE IF NOT EXISTS push_subscriptions (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    endpoint TEXT NOT NULL UNIQUE,
+    p256dh TEXT NOT NULL,
+    auth TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS notifications_sent (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    pulse_id TEXT,
+    type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    sent_at INTEGER NOT NULL
+  );
 `);
 
 // Idempotent migration for databases created before language/custom-topic

@@ -43,6 +43,13 @@ Un pipeline de descubrimiento **real**, no una maqueta con datos falsos:
    ninguno, se usa inglés) y puede cambiarlo en cualquier momento desde el selector del feed. El
    feed, el contador de cambios y la ingesta filtran/generan contenido en ese idioma —
    `src/lib/pipeline/rank.ts`, `POST /api/language`.
+10. **Notificaciones push reales** — Web Push estándar (service worker + VAPID), sin Firebase ni
+    ningún SDK de terceros. Tras cada ingesta, `src/lib/push/dispatch.ts` decide a quién avisar
+    según dos de las categorías del documento de producto — "algo que sigues cambió" (una Pulse
+    que sigues se actualizó) y "tendencia excepcional" (momentum muy alto en un tema tuyo) — con
+    un tope de 3 avisos/24h por usuario. El envío en sí (`src/lib/push/send.ts`) usa la librería
+    `web-push` para cifrar y firmar cada mensaje contra el endpoint real del navegador del
+    usuario. Activable desde Perfil.
 
 Un proceso en segundo plano (`src/instrumentation.ts` → `src/lib/pipeline/poller.ts`) ejecuta la
 ingesta cada 5 minutos mientras el servidor esté vivo, así el "qué ha cambiado" es real y no un
@@ -111,6 +118,49 @@ de compuestos. Donde importa, el diccionario incluye el compuesto explícitament
 clasificador vía LLM sería la solución robusta a largo plazo — sigue anotado como mejora futura
 abajo.
 
+## Push notifications: cómo configurarlas y qué verifiqué de verdad
+
+Necesitan un par de claves VAPID (gratis, sin cuenta ni SDK de ningún proveedor):
+
+```bash
+npx web-push generate-vapid-keys
+```
+
+Copia `.env.example` a `.env.local` y rellena `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` y
+`NEXT_PUBLIC_VAPID_PUBLIC_KEY` (el mismo valor que la pública, duplicado porque Next.js necesita
+`NEXT_PUBLIC_*` para exponerla al navegador) y `VAPID_SUBJECT` (un `mailto:` cualquiera). Reinicia
+el servidor tras cambiar `.env.local`.
+
+**Qué comprobé en este sandbox y qué no:**
+
+- **Envío real desde el servidor: verificado.** Registré una suscripción con una clave EC de
+  formato válido (65 bytes, generada con `crypto.generateKeyPairSync`) apuntando a
+  `fcm.googleapis.com`, disparé una ingesta manual y `web-push` cifró y envió la petición HTTPS
+  real sin ningún error — Google la aceptó. El token en sí era inventado (no hay un dispositivo
+  real detrás), así que no puedo probar que llegó a una pantalla, pero sí que el servidor sabe
+  construir y enviar un Web Push real contra la infraestructura real de Google.
+- **Tope de 3 avisos/24h: verificado.** Tras 3 envíos, una cuarta ingesta no generó ninguno más;
+  lo confirmé disparando una ingesta adicional después.
+- **Categorías "algo que sigues cambió" / "tendencia excepcional": verificadas.** Seguí una Pulse
+  real, disparé una ingesta y el sistema generó ambos tipos de aviso con el texto correcto.
+- **Suscripción desde el navegador (`pushManager.subscribe()`): NO pude completarla en este
+  sandbox.** Chrome necesita contactar además `accounts.google.com` y
+  `android.clients.google.com` para el registro (más allá de `fcm.googleapis.com`, que sí es
+  alcanzable), y esos dominios están bloqueados por la política de red de este entorno de
+  desarrollo — la llamada se queda colgada sin más. Es el mismo tipo de límite que ya viste con
+  Wikipedia/Hacker News, solo que aquí lo descubrí probándolo en vivo en vez de con un curl
+  rápido. El código del flujo (permiso → registrar service worker → suscribir → mandar al
+  backend) es estándar y correcto; en tu navegador normal (fuera de este sandbox) debería
+  completarse sin problema — ver instrucciones exactas de prueba más abajo.
+- Nota aparte, solo relevante si alguna vez automatizas esto con Playwright: `browser.newContext()`
+  lanza un perfil tipo incógnito, y Chrome **deshabilita la Push API en incógnito** a propósito
+  (no es detectable ni evitable). Hace falta `chromium.launchPersistentContext(...)` con un
+  perfil real. Un usuario normal abriendo Chrome nunca se topa con esto.
+
+"Resumen de tu día" (la tercera categoría de notificaciones del documento de producto) **no está
+implementada** — necesita un disparador una vez al día a una hora fija, y este poller de 5 minutos
+no es el sitio natural para eso.
+
 ## Base de datos
 
 SQLite local (`data/pulse.db`, en `.gitignore`) vía `better-sqlite3`. Para el MVP es
@@ -124,7 +174,7 @@ es un cambio localizado a `src/lib/db.ts` cuando haga falta escalar más allá d
 2. Sustituir el resumen por plantillas con un LLM real (guardando la regla "no inventar hechos" y
    la trazabilidad a fuentes) — y de paso, un clasificador de tema vía LLM en vez de por palabras
    clave, para no depender de mantener diccionarios por idioma a mano.
-3. Añadir push notifications reales (1–3/día, basadas en follows).
+3. Categoría de notificación "resumen de tu día" (digest diario a hora fija).
 4. Añadir más fuentes por idioma más allá de Wikipedia (p. ej. GDELT, agregadores de prensa
    regionales) para que el feed no-inglés tenga la misma profundidad que el inglés.
 5. Solo si la retención es buena: capa FATE (predicciones), rankings, comunidad.

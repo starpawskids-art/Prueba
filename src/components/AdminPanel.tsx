@@ -11,11 +11,12 @@ type Run = {
   error: string | null;
 };
 
-type Status = { runs: Run[]; signalCount: number; pulseCount: number };
+type Status = { runs: Run[]; signalCount: number; pulseCount: number; pushSubscriptionCount: number };
 
 export default function AdminPanel() {
   const [status, setStatus] = useState<Status | null>(null);
   const [running, setRunning] = useState(false);
+  const [lastNotificationsSent, setLastNotificationsSent] = useState<number | null>(null);
 
   async function load() {
     const res = await fetch("/api/ingest");
@@ -32,7 +33,9 @@ export default function AdminPanel() {
   async function triggerRun() {
     setRunning(true);
     try {
-      await fetch("/api/ingest", { method: "POST" });
+      const res = await fetch("/api/ingest", { method: "POST" });
+      const data = (await res.json()) as { notificationsSent: number };
+      setLastNotificationsSent(data.notificationsSent);
       await load();
     } finally {
       setRunning(false);
@@ -41,7 +44,7 @@ export default function AdminPanel() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-3 gap-2">
         <div className="rounded-xl border border-border bg-surface py-3 text-center">
           <p className="text-lg font-bold">{status?.signalCount ?? "—"}</p>
           <p className="text-[11px] text-muted">señales rastreadas</p>
@@ -49,6 +52,10 @@ export default function AdminPanel() {
         <div className="rounded-xl border border-border bg-surface py-3 text-center">
           <p className="text-lg font-bold">{status?.pulseCount ?? "—"}</p>
           <p className="text-[11px] text-muted">pulses generadas</p>
+        </div>
+        <div className="rounded-xl border border-border bg-surface py-3 text-center">
+          <p className="text-lg font-bold">{status?.pushSubscriptionCount ?? "—"}</p>
+          <p className="text-[11px] text-muted">suscripciones push</p>
         </div>
       </div>
 
@@ -59,6 +66,11 @@ export default function AdminPanel() {
       >
         {running ? "Ejecutando ingesta…" : "Ejecutar ingesta ahora"}
       </button>
+      {lastNotificationsSent !== null && (
+        <p className="text-center text-xs text-muted">
+          Última ejecución manual: {lastNotificationsSent} notificación(es) push enviada(s).
+        </p>
+      )}
 
       <div>
         <h2 className="text-sm font-semibold text-muted">Últimas ejecuciones</h2>
