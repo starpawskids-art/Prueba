@@ -97,7 +97,8 @@ db.exec(`
     user_id TEXT NOT NULL,
     body TEXT NOT NULL,
     created_at INTEGER NOT NULL,
-    hidden_at INTEGER
+    hidden_at INTEGER,
+    parent_comment_id TEXT
   );
   CREATE INDEX IF NOT EXISTS idx_comments_pulse ON pulse_comments(pulse_id, created_at);
 
@@ -167,6 +168,7 @@ const migrations: string[] = [
   "ALTER TABLE users ADD COLUMN username TEXT",
   "ALTER TABLE users ADD COLUMN display_name TEXT",
   "ALTER TABLE users ADD COLUMN bio TEXT",
+  "ALTER TABLE pulse_comments ADD COLUMN parent_comment_id TEXT",
 ];
 for (const statement of migrations) {
   try {

@@ -84,8 +84,11 @@ contexto aportado en una Pulse concreta merece que la sigas.
   el resto de texto libre (`src/lib/moderation.ts#sanitizeUsername`/`sanitizeBio`), con una lista
   de nombres reservados para no colisionar con rutas de la app (`admin`, `api`, `pulse`…).
 - **Pulse colaborativa** (sección 21 del documento) — cualquiera puede añadir contexto a una
-  Pulse desde su página de detalle. Moderado, reportable, y listado en el perfil público del
-  autor como "Aportes recientes" — `src/lib/social/comments.ts`.
+  Pulse desde su página de detalle, y responder al comentario de otra persona (hilo de un nivel,
+  con "↳ en respuesta a X"). Moderado, reportable, y listado en el perfil público del autor como
+  "Aportes recientes" — `src/lib/social/comments.ts`. Responder a un comentario dispara una
+  notificación push real ("Respondieron a tu comentario"), salvo que te respondas a ti mismo —
+  mismo tope compartido de 3/24h que el resto de categorías.
 - **Grafo social** — seguir a otras personas (no solo Pulses o temas) desde su perfil público.
   La pestaña "Sigues → Personas" muestra un feed de actividad real: los aportes de contexto más
   recientes de la gente que sigues, en cualquier Pulse — `src/lib/social/follows.ts`. Seguir a
@@ -230,6 +233,10 @@ el servidor tras cambiar `.env.local`.
 - **"Nuevo seguidor" (Capa 1, más allá de las tres categorías originales): verificado.** Dos
   usuarios reales, uno con una suscripción con clave EC válida; el segundo siguió al primero y el
   envío se completó sin error, contabilizado en el mismo tope de 3/24h.
+- **"Respondieron a tu comentario": verificado.** A comentó, B respondió con `parentCommentId` —
+  el hilo se guardó correctamente ("↳ en respuesta a A") y el envío se completó sin error. Probé
+  también el caso contrario: A respondiéndose a sí mismo no generó una segunda notificación
+  (`notifications_sent` se quedó en 1 tras esa respuesta).
 - **Suscripción desde el navegador (`pushManager.subscribe()`): NO pude completarla en este
   sandbox.** Chrome necesita contactar además `accounts.google.com` y
   `android.clients.google.com` para el registro (más allá de `fcm.googleapis.com`, que sí es
@@ -263,8 +270,8 @@ es un cambio localizado a `src/lib/db.ts` cuando haga falta escalar más allá d
    mejoran con identidad + grafo social + cuentas reales activos.
 2. Verificación de email y recuperación de contraseña — necesitan un servicio de envío de correo;
    ver la sección "Autenticación" arriba.
-3. Notificación "alguien respondió a tu comentario" o "un comentario tuyo recibió mucha
-   atención" — el siguiente gancho social obvio, mismo patrón que "nuevo seguidor".
+3. "Un comentario tuyo recibió mucha atención" (votos/reacciones en comentarios) — de momento
+   comentarios y respuestas no tienen ninguna señal de calidad más allá de moderarlos.
 4. Sustituir el resumen por plantillas con un LLM real (guardando la regla "no inventar hechos" y
    la trazabilidad a fuentes) — y de paso, un clasificador de tema vía LLM en vez de por palabras
    clave, para no depender de mantener diccionarios por idioma a mano.
