@@ -2,6 +2,7 @@ import BottomNav from "@/components/BottomNav";
 import ProfileInterests from "@/components/ProfileInterests";
 import PushOptIn from "@/components/PushOptIn";
 import PublicIdentity from "@/components/PublicIdentity";
+import AccountAuth from "@/components/AccountAuth";
 import { effectiveLanguage, getOrCreateUserId, getUser } from "@/lib/user";
 import { getFollowerCount, getFollowingCount } from "@/lib/social/follows";
 import db from "@/lib/db";
@@ -33,6 +34,8 @@ export default async function ProfilePage() {
             Miembro desde {user ? new Date(user.createdAt).toLocaleDateString("es-ES") : "—"}
           </p>
         </header>
+
+        <AccountAuth />
 
         <div className="grid grid-cols-3 gap-2 text-center">
           <Stat label="Guardadas" value={countFor("save")} />

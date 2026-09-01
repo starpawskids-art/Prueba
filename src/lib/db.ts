@@ -137,6 +137,22 @@ db.exec(`
     body TEXT NOT NULL,
     sent_at INTEGER NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS credentials (
+    user_id TEXT PRIMARY KEY,
+    email TEXT NOT NULL,
+    password_hash TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_credentials_email ON credentials(email);
+
+  CREATE TABLE IF NOT EXISTS sessions (
+    token_hash TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 `);
 
 // Idempotent migration for databases created before language/custom-topic

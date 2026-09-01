@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { randomUUID } from "node:crypto";
 import db from "./db";
+import { SESSION_COOKIE_NAME, resolveSession } from "./auth";
 import { DEFAULT_LANGUAGE, Language, isLanguage } from "./types";
 
 const COOKIE_NAME = "pulse_uid";
@@ -48,13 +49,36 @@ function rowToUser(row: UserRow): PulseUser {
 // a Server Component render, so by the time any page or handler runs here
 // the cookie is guaranteed to already exist. This just ensures the
 // matching DB row exists (a plain write, unrelated to that restriction).
+//
+// If a valid pulse_session cookie is present (the user logged in — see
+// lib/auth.ts), it takes priority: every caller of this function
+// transparently gets the authenticated account's id instead of the
+// anonymous one, with zero changes needed at any call site. That's what
+// makes logging in on a new device "just work" — same identity resolver,
+// different source.
 export async function getOrCreateUserId(): Promise<string> {
   const store = await cookies();
+
+  const sessionToken = store.get(SESSION_COOKIE_NAME)?.value;
+  if (sessionToken) {
+    const sessionUserId = resolveSession(sessionToken);
+    if (sessionUserId) return sessionUserId;
+  }
+
   const id = store.get(COOKIE_NAME)?.value ?? randomUUID();
   db.prepare(
     `INSERT OR IGNORE INTO users (id, created_at, last_visit_at, interests_json, custom_interests_json, language) VALUES (?, ?, NULL, '[]', '[]', NULL)`
   ).run(id, Date.now());
   return id;
+}
+
+// Whether the *current request* is authenticated (a valid session cookie),
+// as opposed to riding on the anonymous pulse_uid cookie.
+export async function isAuthenticated(): Promise<boolean> {
+  const store = await cookies();
+  const sessionToken = store.get(SESSION_COOKIE_NAME)?.value;
+  if (!sessionToken) return false;
+  return resolveSession(sessionToken) !== null;
 }
 
 export function getUser(id: string): PulseUser | null {

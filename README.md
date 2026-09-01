@@ -93,12 +93,42 @@ contexto aportado en una Pulse concreta merece que la sigas.
   compartido de 3/24h que las demás categorías — no es una de las tres categorías originales del
   documento, pero usa exactamente la misma infraestructura y el mismo presupuesto, no uno aparte.
 
-**Limitación importante y deliberada:** no hay autenticación real (sin email, sin contraseña, sin
-OAuth). Un `username` reclamado está ligado al cookie anónimo de ese navegador — si lo borras o
-cambias de dispositivo, pierdes el control de ese nombre sin forma de recuperarlo. Esto es
-suficiente para validar si la identidad pública y el grafo social mueven la retención; migrar a
-autenticación real (magic link por email, o OAuth) es la condición previa a cualquier lanzamiento
-público con esta capa activa.
+**Actualización:** la limitación de arriba (identidad ligada solo al navegador) ya está resuelta —
+ver "Autenticación" más abajo.
+
+## Autenticación
+
+Email + contraseña con sesiones reales del lado del servidor — sin proveedor externo, sin
+dependencia nueva. `crypto.scrypt` de Node para el hash (con sal aleatoria por contraseña) y un
+token de sesión aleatorio de 32 bytes cuyo hash SHA-256 es lo único que se guarda en BD (el token
+en crudo solo vive en la cookie `httpOnly`, así que un volcado de la base de datos no sirve para
+suplantar sesiones) — `src/lib/auth.ts`.
+
+Lo importante es que **"Crear cuenta" no crea un usuario nuevo**: adjunta el email/contraseña a la
+identidad anónima que ya tenías en ese navegador (mismo `user_id`), así que intereses, guardados,
+username y comentarios se conservan tal cual. "Iniciar sesión" hace lo contrario a propósito:
+cambia la sesión del navegador a la cuenta que corresponde a ese email — si ese navegador ya tenía
+actividad anónima previa, esa actividad no se combina, simplemente deja de ser "tú" hasta que
+cierres sesión (mismo comportamiento que cualquier sitio con login). `getOrCreateUserId()`
+(`src/lib/user.ts`) es el único punto que resuelve identidad en toda la app — si hay una cookie de
+sesión válida, gana ella sobre la cookie anónima; si no, todo sigue funcionando exactamente igual
+que antes de tener cuentas. Ninguna otra ruta tuvo que cambiar.
+
+Verificado en vivo con tres identidades curl independientes (cookie jars separadas, simulando
+navegadores distintos): registrar una cuenta conservó el username y la Pulse guardada previos;
+iniciar sesión desde una segunda identidad con datos anónimos propios (intereses y username
+distintos) cambió correctamente a los datos de la cuenta real, no los mezcló ni los perdió;
+contraseña incorrecta rechazada (401); email duplicado rechazado (409); contraseña corta y email
+inválido rechazados (400); y cerrar sesión devolvió esa segunda identidad exactamente a sus datos
+anónimos originales de antes del login.
+
+**Qué falta a propósito, para producción real:**
+- **Verificación de email** — ahora mismo cualquiera puede registrar cualquier email sin
+  comprobar que le pertenece. Necesita un servicio de envío de correo (Resend, Postmark, SES…).
+- **Recuperación de contraseña** — mismo motivo: sin envío de email no hay "he olvidado mi
+  contraseña" real.
+- **Rate limiting en login** — no hay límite de intentos; en producción hace falta antes de
+  exponerlo públicamente.
 
 ## Pantallas
 
@@ -230,10 +260,9 @@ es un cambio localizado a `src/lib/db.ts` cuando haga falta escalar más allá d
 
 1. **Medir de verdad** — desplegar, conseguir usuarios reales, y mirar el panel de retención de
    `/admin` durante unas semanas. Todo lo demás en esta lista es prematuro si D1/D7/D30 no
-   mejoran con identidad + grafo social activos.
-2. **Autenticación real** (magic link por email, o OAuth) — condición previa a cualquier
-   lanzamiento público con identidad/grafo social activos; ahora mismo un username se pierde si
-   se borran las cookies.
+   mejoran con identidad + grafo social + cuentas reales activos.
+2. Verificación de email y recuperación de contraseña — necesitan un servicio de envío de correo;
+   ver la sección "Autenticación" arriba.
 3. Notificación "alguien respondió a tu comentario" o "un comentario tuyo recibió mucha
    atención" — el siguiente gancho social obvio, mismo patrón que "nuevo seguidor".
 4. Sustituir el resumen por plantillas con un LLM real (guardando la regla "no inventar hechos" y
