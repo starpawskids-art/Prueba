@@ -1,7 +1,9 @@
 import BottomNav from "@/components/BottomNav";
 import ProfileInterests from "@/components/ProfileInterests";
 import PushOptIn from "@/components/PushOptIn";
+import PublicIdentity from "@/components/PublicIdentity";
 import { effectiveLanguage, getOrCreateUserId, getUser } from "@/lib/user";
+import { getFollowerCount, getFollowingCount } from "@/lib/social/follows";
 import db from "@/lib/db";
 
 export default async function ProfilePage() {
@@ -53,6 +55,14 @@ export default async function ProfilePage() {
             </div>
           </div>
         )}
+
+        <PublicIdentity
+          initialUsername={user?.username ?? null}
+          initialDisplayName={user?.displayName ?? null}
+          initialBio={user?.bio ?? null}
+          followerCount={getFollowerCount(userId)}
+          followingCount={getFollowingCount(userId)}
+        />
 
         <ProfileInterests
           initialInterests={user?.interests ?? []}

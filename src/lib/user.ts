@@ -12,16 +12,24 @@ export type PulseUser = {
   interests: string[];
   customInterests: string[];
   language: Language | null;
+  username: string | null;
+  displayName: string | null;
+  bio: string | null;
 };
 
-function rowToUser(row: {
+type UserRow = {
   id: string;
   created_at: number;
   last_visit_at: number | null;
   interests_json: string;
   custom_interests_json: string;
   language: string | null;
-}): PulseUser {
+  username: string | null;
+  display_name: string | null;
+  bio: string | null;
+};
+
+function rowToUser(row: UserRow): PulseUser {
   return {
     id: row.id,
     createdAt: row.created_at,
@@ -29,6 +37,9 @@ function rowToUser(row: {
     interests: JSON.parse(row.interests_json),
     customInterests: JSON.parse(row.custom_interests_json),
     language: row.language && isLanguage(row.language) ? row.language : null,
+    username: row.username,
+    displayName: row.display_name,
+    bio: row.bio,
   };
 }
 
@@ -47,10 +58,24 @@ export async function getOrCreateUserId(): Promise<string> {
 }
 
 export function getUser(id: string): PulseUser | null {
-  const row = db.prepare(`SELECT * FROM users WHERE id = ?`).get(id) as
-    | Parameters<typeof rowToUser>[0]
+  const row = db.prepare(`SELECT * FROM users WHERE id = ?`).get(id) as UserRow | undefined;
+  return row ? rowToUser(row) : null;
+}
+
+export function getUserByUsername(username: string): PulseUser | null {
+  const row = db.prepare(`SELECT * FROM users WHERE username = ?`).get(username.toLowerCase()) as
+    | UserRow
     | undefined;
   return row ? rowToUser(row) : null;
+}
+
+// Public display name: what shows up in comments, follower lists, etc.
+// Falls back to "@username" and finally to a generic label — never the
+// raw internal id, which would leak the anonymous session identifier.
+export function publicName(user: Pick<PulseUser, "username" | "displayName">): string {
+  if (user.displayName) return user.displayName;
+  if (user.username) return `@${user.username}`;
+  return "Alguien en PULSE";
 }
 
 // Language falls back to English whenever the user hasn't picked one —
@@ -75,6 +100,35 @@ export function setCustomInterests(id: string, customInterests: string[]) {
 
 export function setLanguage(id: string, language: Language | null) {
   db.prepare(`UPDATE users SET language = ? WHERE id = ?`).run(language, id);
+}
+
+export type SetUsernameResult = { ok: true } | { ok: false; reason: string };
+
+// Caller is responsible for running the value through
+// lib/moderation.ts#sanitizeUsername first — this only handles the
+// uniqueness constraint, which can't be checked without hitting the DB.
+export function setUsername(id: string, username: string): SetUsernameResult {
+  const existing = db.prepare(`SELECT id FROM users WHERE username = ?`).get(username) as
+    | { id: string }
+    | undefined;
+  if (existing && existing.id !== id) {
+    return { ok: false, reason: "Ese nombre de usuario ya está en uso." };
+  }
+  try {
+    db.prepare(`UPDATE users SET username = ? WHERE id = ?`).run(username, id);
+  } catch {
+    return { ok: false, reason: "Ese nombre de usuario ya está en uso." };
+  }
+  return { ok: true };
+}
+
+export function setProfile(id: string, fields: { displayName?: string | null; bio?: string | null }) {
+  if (fields.displayName !== undefined) {
+    db.prepare(`UPDATE users SET display_name = ? WHERE id = ?`).run(fields.displayName || null, id);
+  }
+  if (fields.bio !== undefined) {
+    db.prepare(`UPDATE users SET bio = ? WHERE id = ?`).run(fields.bio || null, id);
+  }
 }
 
 export function touchVisit(id: string): number | null {

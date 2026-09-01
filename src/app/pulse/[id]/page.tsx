@@ -4,6 +4,7 @@ import { getPulseById } from "@/lib/pipeline/rank";
 import { ageMinutesSince, confidenceLabel, formatMinutesAgo } from "@/lib/format";
 import PulseDetailActions from "@/components/PulseDetailActions";
 import ReportButton from "@/components/ReportButton";
+import CommentsSection from "@/components/CommentsSection";
 
 export default async function PulseDetailPage({ params }: PageProps<"/pulse/[id]">) {
   const { id } = await params;
@@ -69,6 +70,10 @@ export default async function PulseDetailPage({ params }: PageProps<"/pulse/[id]
       </p>
 
       <PulseDetailActions pulseId={pulse.id} sourceUrl={pulse.sources[0]?.url} title={pulse.title} />
+
+      <div className="border-t border-border pt-4">
+        <CommentsSection pulseId={pulse.id} />
+      </div>
     </div>
   );
 }

@@ -56,18 +56,65 @@ Un proceso en segundo plano (`src/instrumentation.ts` → `src/lib/pipeline/poll
 ingesta cada 5 minutos mientras el servidor esté vivo, así el "qué ha cambiado" es real y no un
 cálculo hecho una sola vez.
 
-## Pantallas (MVP del documento de producto)
+## Capa 0 — deuda del MVP cerrada antes de escalar
 
-Onboarding · Home/Feed · Pulse Detail · Explore · Following · Saved · Profile — más un panel
-`/admin` de debug para inspeccionar el pipeline en vivo (ejecuciones, señales, errores por
-fuente). Diseño mobile-first, oscuro, tipografía grande, sin patrones de scroll infinito tipo
-TikTok — la interfaz comunica "radar/inteligencia", no "entretenimiento".
+El documento de producto es explícito: no construir más funcionalidades sobre una base sin medir.
+Antes de tocar nada de la capa social se cerraron las dos piezas que faltaban:
+
+- **Retención D1/D7/D30 real** — no una estimación: una tabla `visits` registra cada apertura, y
+  `src/lib/analytics/retention.ts` calcula retención de cohorte clásica (¿volvió el usuario
+  exactamente en la ventana [día N, día N+1) tras registrarse? — no acumulado, y solo cuentan
+  cohortes ya maduras). Visible en `/admin` contra los objetivos del propio documento (D1 >35%,
+  D7 >15–20%, D30 >8–12%).
+- **Moderación básica** — canal para reportar ("Reportar" en cualquier Pulse o comentario) +
+  cola de moderación en `/admin` para ocultar contenido reportado (soft-hide, no borra) o
+  descartar el reporte. El contenido oculto desaparece del feed y del contador de cambios de
+  todo el mundo.
+
+## Capa 1 — identidad, Pulse colaborativa y grafo social
+
+Esto va deliberadamente más allá de lo que pide el documento de producto original (que
+explícitamente dice "no construir todavía: red social completa, chat"). La apuesta: el efecto
+red de PULSE no viene de un muro cronológico de posts, sino de curaduría reconocible — gente cuyo
+contexto aportado en una Pulse concreta merece que la sigas.
+
+- **Identidad pública opcional** — cualquiera puede reclamar un `username` (sin contraseña,
+  ligado a la cookie anónima existente — ver limitación abajo) desde Perfil, con nombre visible y
+  bio opcionales. Perfil público real en `/u/[username]`, visible sin sesión. Moderado igual que
+  el resto de texto libre (`src/lib/moderation.ts#sanitizeUsername`/`sanitizeBio`), con una lista
+  de nombres reservados para no colisionar con rutas de la app (`admin`, `api`, `pulse`…).
+- **Pulse colaborativa** (sección 21 del documento) — cualquiera puede añadir contexto a una
+  Pulse desde su página de detalle. Moderado, reportable, y listado en el perfil público del
+  autor como "Aportes recientes" — `src/lib/social/comments.ts`.
+- **Grafo social** — seguir a otras personas (no solo Pulses o temas) desde su perfil público.
+  La pestaña "Sigues → Personas" muestra un feed de actividad real: los aportes de contexto más
+  recientes de la gente que sigues, en cualquier Pulse — `src/lib/social/follows.ts`. Seguir a
+  alguien dispara una notificación push real ("Nuevo seguidor en PULSE"), con el mismo tope
+  compartido de 3/24h que las demás categorías — no es una de las tres categorías originales del
+  documento, pero usa exactamente la misma infraestructura y el mismo presupuesto, no uno aparte.
+
+**Limitación importante y deliberada:** no hay autenticación real (sin email, sin contraseña, sin
+OAuth). Un `username` reclamado está ligado al cookie anónimo de ese navegador — si lo borras o
+cambias de dispositivo, pierdes el control de ese nombre sin forma de recuperarlo. Esto es
+suficiente para validar si la identidad pública y el grafo social mueven la retención; migrar a
+autenticación real (magic link por email, o OAuth) es la condición previa a cualquier lanzamiento
+público con esta capa activa.
+
+## Pantallas
+
+Onboarding · Home/Feed · Pulse Detail (con comentarios) · Explore · Following (Pulses + Personas)
+· Saved · Profile (identidad pública, idioma, notificaciones) · Perfil público `/u/[username]` —
+más un panel `/admin` con retención, moderación y debug del pipeline de ingesta. Diseño
+mobile-first, oscuro, tipografía grande, sin patrones de scroll infinito tipo TikTok — la interfaz
+comunica "radar/inteligencia", no "entretenimiento".
 
 ## Qué NO está construido (a propósito)
 
-FATE/predicciones, red social, chat, gamificación agresiva, monetización, 20 idiomas — todo lo
-que el documento de producto marca explícitamente como "no construir todavía". El objetivo de
-esta fase es demostrar retención (D1/D7/D30), no maximizar superficie de producto.
+FATE/predicciones, chat privado, gamificación agresiva, monetización, 20 idiomas, autenticación
+real — todo lo que el documento de producto marca explícitamente como "no construir todavía", o
+que depende de tener autenticación real primero. El objetivo de esta fase sigue siendo demostrar
+retención, ahora también con la hipótesis de que identidad + grafo social la mejoran — no
+maximizar superficie de producto porque sí.
 
 ## Cómo correrlo
 
@@ -150,6 +197,9 @@ el servidor tras cambiar `.env.local`.
   igual). Lo disparé con datos reales: generó "50 cambios relevantes hoy — el más destacado:
   ...", el envío se completó sin error (mismo resultado que las otras categorías) y una segunda
   llamada inmediata devolvió 0 por el intervalo mínimo.
+- **"Nuevo seguidor" (Capa 1, más allá de las tres categorías originales): verificado.** Dos
+  usuarios reales, uno con una suscripción con clave EC válida; el segundo siguió al primero y el
+  envío se completó sin error, contabilizado en el mismo tope de 3/24h.
 - **Suscripción desde el navegador (`pushManager.subscribe()`): NO pude completarla en este
   sandbox.** Chrome necesita contactar además `accounts.google.com` y
   `android.clients.google.com` para el registro (más allá de `fcm.googleapis.com`, que sí es
@@ -176,13 +226,23 @@ deliberadamente la opción más simple: cero infraestructura que levantar para p
 central. Migrar a Postgres/Redis (como propone la arquitectura técnica del documento de producto)
 es un cambio localizado a `src/lib/db.ts` cuando haga falta escalar más allá de un único proceso.
 
-## Siguientes pasos sugeridos (por orden, según el documento de producto)
+## Siguientes pasos sugeridos
 
-1. Medir D1/D7/D30 con usuarios reales — la métrica decisiva antes de construir nada más.
-2. Sustituir el resumen por plantillas con un LLM real (guardando la regla "no inventar hechos" y
+1. **Medir de verdad** — desplegar, conseguir usuarios reales, y mirar el panel de retención de
+   `/admin` durante unas semanas. Todo lo demás en esta lista es prematuro si D1/D7/D30 no
+   mejoran con identidad + grafo social activos.
+2. **Autenticación real** (magic link por email, o OAuth) — condición previa a cualquier
+   lanzamiento público con identidad/grafo social activos; ahora mismo un username se pierde si
+   se borran las cookies.
+3. Notificación "alguien respondió a tu comentario" o "un comentario tuyo recibió mucha
+   atención" — el siguiente gancho social obvio, mismo patrón que "nuevo seguidor".
+4. Sustituir el resumen por plantillas con un LLM real (guardando la regla "no inventar hechos" y
    la trazabilidad a fuentes) — y de paso, un clasificador de tema vía LLM en vez de por palabras
    clave, para no depender de mantener diccionarios por idioma a mano.
-3. Zona horaria por usuario para el resumen diario (hoy es una hora UTC fija para todos).
-4. Añadir más fuentes por idioma más allá de Wikipedia (p. ej. GDELT, agregadores de prensa
+5. Zona horaria por usuario para el resumen diario (hoy es una hora UTC fija para todos).
+6. Añadir más fuentes por idioma más allá de Wikipedia (p. ej. GDELT, agregadores de prensa
    regionales) para que el feed no-inglés tenga la misma profundidad que el inglés.
-5. Solo si la retención es buena: capa FATE (predicciones), rankings, comunidad.
+7. Moderación real (proveedor externo) en vez del blocklist de `src/lib/moderation.ts`, antes de
+   cualquier lanzamiento público — el blocklist es un punto de partida de MVP, no una solución de
+   confianza y seguridad de producción.
+8. Solo si la retención es buena: capa FATE (predicciones), rankings, misterios colectivos.

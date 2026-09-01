@@ -9,11 +9,13 @@ export default function CollectionView({
   subtitle,
   field,
   emptyText,
+  bare,
 }: {
   title: string;
   subtitle: string;
   field: "saved" | "following";
   emptyText: string;
+  bare?: boolean;
 }) {
   const [items, setItems] = useState<Pulse[] | null>(null);
 
@@ -24,25 +26,31 @@ export default function CollectionView({
       .catch(() => setItems([]));
   }, [field]);
 
-  return (
-    <div className="flex flex-1 flex-col gap-4 px-4 pb-6 pt-5">
-      <header>
-        <h1 className="text-xl font-bold">{title}</h1>
-        <p className="text-sm text-muted">{subtitle}</p>
-      </header>
-
+  const list = (
+    <>
       {!items && <div className="py-16 text-center text-sm text-muted">Cargando…</div>}
       {items && items.length === 0 && (
         <div className="rounded-2xl border border-dashed border-border p-6 text-center text-sm text-muted">
           {emptyText}
         </div>
       )}
-
       <div className="flex flex-col gap-3">
         {items?.map((pulse) => (
           <PulseCard key={pulse.id} pulse={pulse} />
         ))}
       </div>
+    </>
+  );
+
+  if (bare) return list;
+
+  return (
+    <div className="flex flex-1 flex-col gap-4 px-4 pb-6 pt-5">
+      <header>
+        <h1 className="text-xl font-bold">{title}</h1>
+        <p className="text-sm text-muted">{subtitle}</p>
+      </header>
+      {list}
     </div>
   );
 }

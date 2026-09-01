@@ -27,7 +27,7 @@ export default function PulseDetailActions({
   const [following, setFollowing] = useState(false);
 
   return (
-    <div className="mt-auto flex items-center gap-2 text-sm">
+    <div className="flex items-center gap-2 text-sm">
       <button
         onClick={() => {
           setSaved((s) => !s);
