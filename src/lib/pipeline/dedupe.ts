@@ -32,7 +32,11 @@ export function dedupeCandidates(
   const kept: Array<RawCandidate & { mergedFrom: RawCandidate[] }> = [];
 
   for (const { c, tokens } of withTokens) {
-    const match = kept.find((k) => jaccard(tokenize(k.title), tokens) >= SIMILARITY_THRESHOLD);
+    // Never merge across languages — similar tokens across editions (e.g.
+    // shared proper nouns) don't mean the same summarized story.
+    const match = kept.find(
+      (k) => k.lang === c.lang && jaccard(tokenize(k.title), tokens) >= SIMILARITY_THRESHOLD
+    );
     if (match) {
       if (c.sourceQuality > match.sourceQuality) {
         const previous: RawCandidate = { ...match };

@@ -1,4 +1,4 @@
-import { Topic } from "../types";
+import { Language, Topic } from "../types";
 
 export type RawCandidate = {
   source: string;
@@ -10,4 +10,5 @@ export type RawCandidate = {
   metric: number; // raw popularity/engagement metric, comparable within the same source
   metricKind: string; // human label for what `metric` represents, used in change_text
   topicHint: Topic;
+  lang: Language;
 };

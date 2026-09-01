@@ -1,6 +1,6 @@
 import db from "../db";
 import { NOVELTY_HALFLIFE } from "./run";
-import { Confidence, Pulse, SourceRef, Topic } from "../types";
+import { Confidence, DEFAULT_LANGUAGE, Language, Pulse, SourceRef, Topic, isLanguage } from "../types";
 
 type PulseRow = {
   id: string;
@@ -15,13 +15,31 @@ type PulseRow = {
   sources_json: string;
   detected_at: number;
   updated_at: number;
+  lang: string;
 };
 
 const RECENCY_WINDOW_MS = 48 * 60 * 60 * 1000;
 const EXPLORATION_SHARE = 0.2;
+const CUSTOM_MATCH_RELEVANCE = 0.85;
 
 function clamp01(n: number): number {
   return Math.max(0, Math.min(1, n));
+}
+
+function normalizeText(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "");
+}
+
+function findCustomMatch(row: PulseRow, customInterests: string[]): string | null {
+  if (customInterests.length === 0) return null;
+  const haystack = normalizeText(`${row.title} ${row.why_it_matters}`);
+  for (const interest of customInterests) {
+    if (haystack.includes(normalizeText(interest))) return interest;
+  }
+  return null;
 }
 
 function topicAffinity(userId: string, interests: string[]): Map<string, number> {
@@ -45,20 +63,31 @@ function topicAffinity(userId: string, interests: string[]): Map<string, number>
   return affinity;
 }
 
+type UserRow = { interests_json: string; custom_interests_json: string; language: string | null };
+
+function getUserPrefs(userId: string): { interests: string[]; customInterests: string[]; language: Language } {
+  const user = db
+    .prepare(`SELECT interests_json, custom_interests_json, language FROM users WHERE id = ?`)
+    .get(userId) as UserRow | undefined;
+  return {
+    interests: user ? JSON.parse(user.interests_json) : [],
+    customInterests: user ? JSON.parse(user.custom_interests_json) : [],
+    language: user?.language && isLanguage(user.language) ? user.language : DEFAULT_LANGUAGE,
+  };
+}
+
 export type RankedPulse = Pulse & { isExploration: boolean };
 
 export function getFeed(userId: string, limit = 10): RankedPulse[] {
+  const { interests, customInterests, language } = getUserPrefs(userId);
+
   const since = Date.now() - RECENCY_WINDOW_MS;
   const rows = db
-    .prepare(`SELECT * FROM pulses WHERE updated_at >= ? ORDER BY updated_at DESC`)
-    .all(since) as PulseRow[];
+    .prepare(`SELECT * FROM pulses WHERE updated_at >= ? AND lang = ? ORDER BY updated_at DESC`)
+    .all(since, language) as PulseRow[];
 
   if (rows.length === 0) return [];
 
-  const user = db.prepare(`SELECT interests_json FROM users WHERE id = ?`).get(userId) as
-    | { interests_json: string }
-    | undefined;
-  const interests: string[] = user ? JSON.parse(user.interests_json) : [];
   const affinity = topicAffinity(userId, interests);
 
   const momenta = rows.map((r) => r.momentum);
@@ -73,16 +102,20 @@ export function getFeed(userId: string, limit = 10): RankedPulse[] {
     relevancia: number;
     calidadFuente: number;
     baseScore: number;
+    customMatch: string | null;
   };
 
   const scored: Scored[] = rows.map((row) => {
     const momentum01 = maxM === minM ? 0.5 : (row.momentum - minM) / (maxM - minM);
     const ageMinutes = Math.max(0, (now - row.detected_at) / 60000);
     const novelty01 = clamp01(1 - ageMinutes / NOVELTY_HALFLIFE);
-    const relevancia = affinity.get(row.topic) ?? 0.35;
+    const customMatch = findCustomMatch(row, customInterests);
+    const relevancia = customMatch
+      ? Math.max(CUSTOM_MATCH_RELEVANCE, affinity.get(row.topic) ?? 0.35)
+      : affinity.get(row.topic) ?? 0.35;
     const calidadFuente = row.score;
     const baseScore = 0.3 * momentum01 + 0.25 * novelty01 + 0.2 * relevancia + 0.15 * calidadFuente;
-    return { row, momentum01, novelty01, relevancia, calidadFuente, baseScore };
+    return { row, momentum01, novelty01, relevancia, calidadFuente, baseScore, customMatch };
   });
 
   // Greedy diversity re-ranking: diversidad weight (0.10) shrinks the more
@@ -126,22 +159,28 @@ export function getFeed(userId: string, limit = 10): RankedPulse[] {
         .slice(0, picked.length - outside.length);
       const merged = [...trimmed, ...outside.map((o) => ({ ...o, diversidad: 1, finalScore: o.baseScore }))]
         .sort((a, b) => b.finalScore - a.finalScore);
-      return merged.map((m) => toRankedPulse(m.row, m.finalScore, !interests.includes(m.row.topic)));
+      return merged.map((m) => toRankedPulse(m.row, m.finalScore, !interests.includes(m.row.topic), m.customMatch));
     }
   }
 
   return picked
     .sort((a, b) => b.finalScore - a.finalScore)
-    .map((p) => toRankedPulse(p.row, p.finalScore, false));
+    .map((p) => toRankedPulse(p.row, p.finalScore, false, p.customMatch));
 }
 
-function toRankedPulse(row: PulseRow, score: number, isExploration: boolean): RankedPulse {
+function toRankedPulse(
+  row: PulseRow,
+  score: number,
+  isExploration: boolean,
+  customMatch: string | null
+): RankedPulse {
   return {
     id: row.id,
     title: row.title,
     changeText: row.change_text,
     whyItMatters: row.why_it_matters,
     topic: row.topic as Topic,
+    lang: (isLanguage(row.lang) ? row.lang : DEFAULT_LANGUAGE) as Language,
     noveltyMinutes: row.novelty_minutes,
     momentum: row.momentum,
     confidence: row.confidence as Confidence,
@@ -150,6 +189,7 @@ function toRankedPulse(row: PulseRow, score: number, isExploration: boolean): Ra
     detectedAt: row.detected_at,
     updatedAt: row.updated_at,
     isExploration,
+    matchedCustomInterest: customMatch ?? undefined,
   };
 }
 
@@ -162,6 +202,7 @@ export function getPulseById(id: string): Pulse | null {
     changeText: row.change_text,
     whyItMatters: row.why_it_matters,
     topic: row.topic as Topic,
+    lang: (isLanguage(row.lang) ? row.lang : DEFAULT_LANGUAGE) as Language,
     noveltyMinutes: row.novelty_minutes,
     momentum: row.momentum,
     confidence: row.confidence as Confidence,
@@ -172,10 +213,10 @@ export function getPulseById(id: string): Pulse | null {
   };
 }
 
-export function countChangesSince(timestamp: number | null): number {
+export function countChangesSince(timestamp: number | null, language: Language): number {
   if (timestamp === null) return 0;
   const row = db
-    .prepare(`SELECT COUNT(*) as n FROM pulses WHERE detected_at > ?`)
-    .get(timestamp) as { n: number };
+    .prepare(`SELECT COUNT(*) as n FROM pulses WHERE detected_at > ? AND lang = ?`)
+    .get(timestamp, language) as { n: number };
   return row.n;
 }

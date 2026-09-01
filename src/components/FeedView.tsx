@@ -1,44 +1,73 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Pulse } from "@/lib/types";
+import { LANGUAGES, Language, Pulse } from "@/lib/types";
 import PulseCard from "./PulseCard";
 
 type RankedPulse = Pulse & { isExploration: boolean };
 
 type VisitInfo = { changesSince: number; isFirstVisit: boolean };
 
+async function fetchFeedData(): Promise<{
+  language: Language;
+  visit: VisitInfo;
+  pulses: RankedPulse[];
+}> {
+  const langRes = await fetch("/api/language");
+  const { language } = (await langRes.json()) as { language: Language };
+
+  const visitRes = await fetch("/api/visit", { method: "POST" });
+  const visit = (await visitRes.json()) as VisitInfo;
+
+  const pulsesRes = await fetch("/api/pulses?limit=10");
+  const { pulses } = (await pulsesRes.json()) as { pulses: RankedPulse[] };
+
+  return { language, visit, pulses };
+}
+
 export default function FeedView() {
+  const [language, setLanguage] = useState<Language | null>(null);
   const [visit, setVisit] = useState<VisitInfo | null>(null);
   const [pulses, setPulses] = useState<RankedPulse[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
-
     (async () => {
       try {
-        const visitRes = await fetch("/api/visit", { method: "POST" });
-        const visitData = (await visitRes.json()) as VisitInfo;
-        if (!cancelled) setVisit(visitData);
-
-        const pulsesRes = await fetch("/api/pulses?limit=10");
-        const pulsesData = (await pulsesRes.json()) as { pulses: RankedPulse[] };
-        if (!cancelled) setPulses(pulsesData.pulses);
+        const data = await fetchFeedData();
+        setLanguage(data.language);
+        setVisit(data.visit);
+        setPulses(data.pulses);
       } catch {
-        if (!cancelled) setError("No hemos podido conectar con PULSE. Reintenta en unos segundos.");
+        setError("No hemos podido conectar con PULSE. Reintenta en unos segundos.");
       }
     })();
-
-    return () => {
-      cancelled = true;
-    };
   }, []);
+
+  async function changeLanguage(next: Language) {
+    if (next === language) return;
+    setLanguage(next);
+    setPulses(null);
+    await fetch("/api/language", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ language: next }),
+    });
+    try {
+      const data = await fetchFeedData();
+      setLanguage(data.language);
+      setVisit(data.visit);
+      setPulses(data.pulses);
+    } catch {
+      setError("No hemos podido conectar con PULSE. Reintenta en unos segundos.");
+    }
+  }
 
   return (
     <div className="flex flex-1 flex-col gap-4 px-4 pb-6 pt-5">
       <header className="flex items-center justify-between">
         <span className="text-sm font-semibold tracking-wide text-muted">PULSE</span>
+        {language && <LanguageSwitcher language={language} onChange={changeLanguage} />}
       </header>
 
       <ChangesBanner visit={visit} />
@@ -53,7 +82,8 @@ export default function FeedView() {
 
       {pulses && pulses.length === 0 && (
         <div className="rounded-2xl border border-dashed border-border p-6 text-center text-sm text-muted">
-          Todavía no hay señales nuevas. PULSE revisa el mundo cada pocos minutos — vuelve enseguida.
+          Todavía no hay señales nuevas en este idioma. PULSE revisa el mundo cada pocos minutos —
+          vuelve enseguida, o prueba con otro idioma arriba.
         </div>
       )}
 
@@ -62,6 +92,49 @@ export default function FeedView() {
           <PulseCard key={pulse.id} pulse={pulse} isExploration={pulse.isExploration} />
         ))}
       </div>
+    </div>
+  );
+}
+
+function LanguageSwitcher({
+  language,
+  onChange,
+}: {
+  language: Language;
+  onChange: (lang: Language) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const current = LANGUAGES.find((l) => l.code === language) ?? LANGUAGES[0];
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-1 rounded-full border border-border bg-surface px-2.5 py-1 text-xs font-medium"
+      >
+        {current.flag} {current.code.toUpperCase()}
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 z-20 mt-2 flex flex-col gap-1 rounded-xl border border-border bg-surface-raised p-1.5 shadow-lg">
+            {LANGUAGES.map((l) => (
+              <button
+                key={l.code}
+                onClick={() => {
+                  onChange(l.code);
+                  setOpen(false);
+                }}
+                className={`flex items-center gap-2 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-left text-xs font-medium ${
+                  l.code === language ? "bg-accent text-white" : "text-foreground"
+                }`}
+              >
+                {l.flag} {l.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }

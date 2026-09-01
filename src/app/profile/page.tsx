@@ -1,6 +1,6 @@
 import BottomNav from "@/components/BottomNav";
 import ProfileInterests from "@/components/ProfileInterests";
-import { getOrCreateUserId, getUser } from "@/lib/user";
+import { effectiveLanguage, getOrCreateUserId, getUser } from "@/lib/user";
 import db from "@/lib/db";
 
 export default async function ProfilePage() {
@@ -53,7 +53,11 @@ export default async function ProfilePage() {
           </div>
         )}
 
-        <ProfileInterests initialInterests={user?.interests ?? []} />
+        <ProfileInterests
+          initialInterests={user?.interests ?? []}
+          initialCustomInterests={user?.customInterests ?? []}
+          initialLanguage={effectiveLanguage(user)}
+        />
 
         <a
           href="/admin"

@@ -45,6 +45,11 @@ export default function PulseCard({
               Descubrimiento
             </span>
           )}
+          {pulse.matchedCustomInterest && (
+            <span className="rounded-full border border-accent/40 px-2 py-0.5 text-accent">
+              Por &quot;{pulse.matchedCustomInterest}&quot;
+            </span>
+          )}
         </div>
         <span className={confidence.className}>{confidence.label}</span>
       </div>

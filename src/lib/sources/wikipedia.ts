@@ -1,3 +1,4 @@
+import { Language } from "../types";
 import { classifyTopic } from "../topics";
 import { RawCandidate } from "./types";
 
@@ -5,6 +6,11 @@ import { RawCandidate } from "./types";
 // most recently completed day, so "metric" is that day's pageview count.
 // Momentum is derived poll-over-poll by lib/pipeline against our own
 // stored snapshots, not fabricated.
+//
+// Wikipedia's per-language editions are what give PULSE real multi-language
+// coverage: the same endpoint, parametrized by `{lang}.wikipedia`, returns
+// that language's own trending articles — not a translation of English
+// trends, but what that language's readers are actually looking at.
 function yesterday(): { y: string; m: string; d: string } {
   const date = new Date(Date.now() - 24 * 60 * 60 * 1000);
   return {
@@ -20,11 +26,17 @@ type TopviewsResponse = {
   }>;
 };
 
-const EXCLUDED = new Set(["Main_Page", "Special:Search", "Special:MyLanguage/Main_Page"]);
+const EXCLUDED = new Set([
+  "Main_Page",
+  "Special:Search",
+  "Special:MyLanguage/Main_Page",
+  "Wikipedia:Portada",
+  "Especial:Buscar",
+]);
 
-export async function fetchWikipediaCandidates(): Promise<RawCandidate[]> {
+export async function fetchWikipediaCandidates(lang: Language): Promise<RawCandidate[]> {
   const { y, m, d } = yesterday();
-  const url = `https://wikimedia.org/api/rest_v1/metrics/pageviews/top/en.wikipedia/all-access/${y}/${m}/${d}`;
+  const url = `https://wikimedia.org/api/rest_v1/metrics/pageviews/top/${lang}.wikipedia/all-access/${y}/${m}/${d}`;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 8000);
@@ -34,7 +46,7 @@ export async function fetchWikipediaCandidates(): Promise<RawCandidate[]> {
       signal: controller.signal,
       headers: { "User-Agent": "PulseApp/0.1 (product research MVP)" },
     });
-    if (!res.ok) throw new Error(`Wikipedia request failed: ${res.status}`);
+    if (!res.ok) throw new Error(`Wikipedia (${lang}) request failed: ${res.status}`);
     data = (await res.json()) as TopviewsResponse;
   } finally {
     clearTimeout(timer);
@@ -50,12 +62,15 @@ export async function fetchWikipediaCandidates(): Promise<RawCandidate[]> {
       source: "wikipedia",
       sourceLabel: "Wikipedia",
       sourceQuality: 0.85,
-      externalId: a.article,
+      // namespaced by language: the same article title can legitimately
+      // exist as separate top-viewed entries across different editions.
+      externalId: `${lang}:${a.article}`,
       title,
-      url: `https://en.wikipedia.org/wiki/${a.article}`,
+      url: `https://${lang}.wikipedia.org/wiki/${a.article}`,
       metric: a.views,
       metricKind: "vistas en el último día",
       topicHint: classifyTopic(title, "Curiosidades"),
+      lang,
     } satisfies RawCandidate;
   });
 }

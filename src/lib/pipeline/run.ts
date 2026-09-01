@@ -6,7 +6,7 @@ import { fetchGithubCandidates } from "../sources/github";
 import { RawCandidate } from "../sources/types";
 import { dedupeCandidates } from "./dedupe";
 import { buildChangeText, buildWhyItMatters, computeConfidence } from "./summarize";
-import { Confidence, SourceRef, Topic } from "../types";
+import { Confidence, LANGUAGES, SourceRef, Topic } from "../types";
 
 const NOVELTY_HALFLIFE_MINUTES = 180;
 
@@ -24,6 +24,7 @@ type SignalRow = {
   first_seen_at: number;
   last_seen_at: number;
   metric_kind: string;
+  lang: string;
 };
 
 function upsertSignal(candidate: RawCandidate, rank: number, now: number): SignalRow {
@@ -33,7 +34,7 @@ function upsertSignal(candidate: RawCandidate, rank: number, now: number): Signa
 
   if (existing) {
     db.prepare(
-      `UPDATE signals SET title=?, url=?, topic=?, metric=?, prev_metric=?, rank=?, prev_rank=?, last_seen_at=?, metric_kind=? WHERE id=?`
+      `UPDATE signals SET title=?, url=?, topic=?, metric=?, prev_metric=?, rank=?, prev_rank=?, last_seen_at=?, metric_kind=?, lang=? WHERE id=?`
     ).run(
       candidate.title,
       candidate.url,
@@ -44,16 +45,17 @@ function upsertSignal(candidate: RawCandidate, rank: number, now: number): Signa
       existing.rank,
       now,
       candidate.metricKind,
+      candidate.lang,
       existing.id
     );
-    return { ...existing, metric: candidate.metric, prev_metric: existing.metric, rank, prev_rank: existing.rank, last_seen_at: now };
+    return { ...existing, metric: candidate.metric, prev_metric: existing.metric, rank, prev_rank: existing.rank, last_seen_at: now, lang: candidate.lang };
   }
 
   const id = randomUUID();
   db.prepare(
-    `INSERT INTO signals (id, source, external_id, title, url, topic, metric, prev_metric, rank, prev_rank, first_seen_at, last_seen_at, metric_kind)
-     VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL, ?, ?, ?)`
-  ).run(id, candidate.source, candidate.externalId, candidate.title, candidate.url, candidate.topicHint, candidate.metric, rank, now, now, candidate.metricKind);
+    `INSERT INTO signals (id, source, external_id, title, url, topic, metric, prev_metric, rank, prev_rank, first_seen_at, last_seen_at, metric_kind, lang)
+     VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL, ?, ?, ?, ?)`
+  ).run(id, candidate.source, candidate.externalId, candidate.title, candidate.url, candidate.topicHint, candidate.metric, rank, now, now, candidate.metricKind, candidate.lang);
   return {
     id,
     source: candidate.source,
@@ -68,6 +70,7 @@ function upsertSignal(candidate: RawCandidate, rank: number, now: number): Signa
     first_seen_at: now,
     last_seen_at: now,
     metric_kind: candidate.metricKind,
+    lang: candidate.lang,
   };
 }
 
@@ -118,7 +121,7 @@ function upsertPulse(
 
   if (existing) {
     db.prepare(
-      `UPDATE pulses SET title=?, change_text=?, why_it_matters=?, topic=?, novelty_minutes=?, momentum=?, confidence=?, score=?, sources_json=?, updated_at=? WHERE id=?`
+      `UPDATE pulses SET title=?, change_text=?, why_it_matters=?, topic=?, novelty_minutes=?, momentum=?, confidence=?, score=?, sources_json=?, updated_at=?, lang=? WHERE id=?`
     ).run(
       signal.title,
       changeText,
@@ -130,12 +133,13 @@ function upsertPulse(
       sourceQuality,
       JSON.stringify(sources),
       now,
+      signal.lang,
       existing.id
     );
   } else {
     db.prepare(
-      `INSERT INTO pulses (id, signal_id, title, change_text, why_it_matters, topic, novelty_minutes, momentum, confidence, score, sources_json, detected_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO pulses (id, signal_id, title, change_text, why_it_matters, topic, novelty_minutes, momentum, confidence, score, sources_json, detected_at, updated_at, lang)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       randomUUID(),
       signal.id,
@@ -149,7 +153,8 @@ function upsertPulse(
       sourceQuality,
       JSON.stringify(sources),
       signal.first_seen_at,
-      now
+      now,
+      signal.lang
     );
   }
 }
@@ -166,10 +171,16 @@ export async function runIngestion(): Promise<IngestResult> {
     .prepare(`INSERT INTO ingest_runs (started_at) VALUES (?)`)
     .run(now).lastInsertRowid as number;
 
+  // Wikipedia is polled once per supported language edition — each one is
+  // a genuinely distinct source of "what's trending", not a translation.
   const sourceFns: Array<{ label: string; quality: number; fn: () => Promise<RawCandidate[]> }> = [
     { label: "Hacker News", quality: 0.75, fn: fetchHackerNewsCandidates },
-    { label: "Wikipedia", quality: 0.85, fn: fetchWikipediaCandidates },
     { label: "GitHub", quality: 0.7, fn: fetchGithubCandidates },
+    ...LANGUAGES.map(({ code, label }) => ({
+      label: `Wikipedia (${label})`,
+      quality: 0.85,
+      fn: () => fetchWikipediaCandidates(code),
+    })),
   ];
 
   const settled = await Promise.allSettled(sourceFns.map((s) => s.fn()));
@@ -185,16 +196,19 @@ export async function runIngestion(): Promise<IngestResult> {
 
   const deduped = dedupeCandidates(allCandidates);
 
-  const bySource = new Map<string, typeof deduped>();
+  // Ranked within (source, language) — an es.wikipedia article's rank
+  // shouldn't compete numerically against en.wikipedia's.
+  const batches = new Map<string, typeof deduped>();
   for (const c of deduped) {
-    const list = bySource.get(c.source) ?? [];
+    const key = `${c.source}:${c.lang}`;
+    const list = batches.get(key) ?? [];
     list.push(c);
-    bySource.set(c.source, list);
+    batches.set(key, list);
   }
-  for (const list of bySource.values()) list.sort((a, b) => b.metric - a.metric);
+  for (const list of batches.values()) list.sort((a, b) => b.metric - a.metric);
 
   let pulsesGenerated = 0;
-  for (const list of bySource.values()) {
+  for (const list of batches.values()) {
     list.forEach((candidate, idx) => {
       const signal = upsertSignal(candidate, idx + 1, now);
       const extraSources: SourceRef[] = candidate.mergedFrom.map((m) => ({

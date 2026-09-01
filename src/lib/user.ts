@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { randomUUID } from "node:crypto";
 import db from "./db";
+import { DEFAULT_LANGUAGE, Language, isLanguage } from "./types";
 
 const COOKIE_NAME = "pulse_uid";
 
@@ -9,6 +10,8 @@ export type PulseUser = {
   createdAt: number;
   lastVisitAt: number | null;
   interests: string[];
+  customInterests: string[];
+  language: Language | null;
 };
 
 function rowToUser(row: {
@@ -16,12 +19,16 @@ function rowToUser(row: {
   created_at: number;
   last_visit_at: number | null;
   interests_json: string;
+  custom_interests_json: string;
+  language: string | null;
 }): PulseUser {
   return {
     id: row.id,
     createdAt: row.created_at,
     lastVisitAt: row.last_visit_at,
     interests: JSON.parse(row.interests_json),
+    customInterests: JSON.parse(row.custom_interests_json),
+    language: row.language && isLanguage(row.language) ? row.language : null,
   };
 }
 
@@ -34,7 +41,7 @@ export async function getOrCreateUserId(): Promise<string> {
   const store = await cookies();
   const id = store.get(COOKIE_NAME)?.value ?? randomUUID();
   db.prepare(
-    `INSERT OR IGNORE INTO users (id, created_at, last_visit_at, interests_json) VALUES (?, ?, NULL, '[]')`
+    `INSERT OR IGNORE INTO users (id, created_at, last_visit_at, interests_json, custom_interests_json, language) VALUES (?, ?, NULL, '[]', '[]', NULL)`
   ).run(id, Date.now());
   return id;
 }
@@ -46,11 +53,28 @@ export function getUser(id: string): PulseUser | null {
   return row ? rowToUser(row) : null;
 }
 
+// Language falls back to English whenever the user hasn't picked one —
+// "si no se elige ninguno, que salga en inglés por defecto".
+export function effectiveLanguage(user: PulseUser | null): Language {
+  return user?.language ?? DEFAULT_LANGUAGE;
+}
+
 export function setInterests(id: string, interests: string[]) {
   db.prepare(`UPDATE users SET interests_json = ? WHERE id = ?`).run(
     JSON.stringify(interests),
     id
   );
+}
+
+export function setCustomInterests(id: string, customInterests: string[]) {
+  db.prepare(`UPDATE users SET custom_interests_json = ? WHERE id = ?`).run(
+    JSON.stringify(customInterests),
+    id
+  );
+}
+
+export function setLanguage(id: string, language: Language | null) {
+  db.prepare(`UPDATE users SET language = ? WHERE id = ?`).run(language, id);
 }
 
 export function touchVisit(id: string): number | null {

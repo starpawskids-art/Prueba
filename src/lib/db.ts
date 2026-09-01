@@ -32,6 +32,7 @@ db.exec(`
     first_seen_at INTEGER NOT NULL,
     last_seen_at INTEGER NOT NULL,
     metric_kind TEXT NOT NULL,
+    lang TEXT NOT NULL DEFAULT 'en',
     UNIQUE(source, external_id)
   );
 
@@ -48,14 +49,17 @@ db.exec(`
     score REAL NOT NULL,
     sources_json TEXT NOT NULL,
     detected_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL
+    updated_at INTEGER NOT NULL,
+    lang TEXT NOT NULL DEFAULT 'en'
   );
 
   CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     created_at INTEGER NOT NULL,
     last_visit_at INTEGER,
-    interests_json TEXT NOT NULL DEFAULT '[]'
+    interests_json TEXT NOT NULL DEFAULT '[]',
+    custom_interests_json TEXT NOT NULL DEFAULT '[]',
+    language TEXT
   );
 
   CREATE TABLE IF NOT EXISTS interactions (
@@ -76,5 +80,22 @@ db.exec(`
     error TEXT
   );
 `);
+
+// Idempotent migration for databases created before language/custom-topic
+// support existed. CREATE TABLE IF NOT EXISTS above already covers fresh
+// installs; this only matters for a pre-existing local data/pulse.db.
+const migrations: string[] = [
+  "ALTER TABLE signals ADD COLUMN lang TEXT NOT NULL DEFAULT 'en'",
+  "ALTER TABLE pulses ADD COLUMN lang TEXT NOT NULL DEFAULT 'en'",
+  "ALTER TABLE users ADD COLUMN custom_interests_json TEXT NOT NULL DEFAULT '[]'",
+  "ALTER TABLE users ADD COLUMN language TEXT",
+];
+for (const statement of migrations) {
+  try {
+    db.exec(statement);
+  } catch {
+    // column already exists — fine
+  }
+}
 
 export default db;

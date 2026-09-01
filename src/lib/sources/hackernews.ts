@@ -50,6 +50,7 @@ export async function fetchHackerNewsCandidates(): Promise<RawCandidate[]> {
       metric,
       metricKind: "engagement (puntos + comentarios)",
       topicHint: classifyTopic(item.title, "Tecnología"),
+      lang: "en",
     });
   }
   return candidates;

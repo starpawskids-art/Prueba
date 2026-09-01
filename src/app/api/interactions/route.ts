@@ -31,7 +31,7 @@ export async function GET() {
   const userId = await getOrCreateUserId();
   const rows = db
     .prepare(
-      `SELECT i.type, i.created_at, p.id, p.title, p.topic, p.change_text, p.why_it_matters, p.confidence, p.sources_json, p.detected_at, p.updated_at, p.momentum
+      `SELECT i.type, i.created_at, p.id, p.title, p.topic, p.change_text, p.why_it_matters, p.confidence, p.sources_json, p.detected_at, p.updated_at, p.momentum, p.lang
        FROM interactions i JOIN pulses p ON p.id = i.pulse_id
        WHERE i.user_id = ? AND i.type IN ('save','follow')
        ORDER BY i.created_at DESC`
@@ -49,6 +49,7 @@ export async function GET() {
     detected_at: number;
     updated_at: number;
     momentum: number;
+    lang: string;
   }>;
 
   const dedupeById = (list: typeof rows) => {
@@ -79,11 +80,13 @@ function toPulseJson(r: {
   detected_at: number;
   updated_at: number;
   momentum: number;
+  lang: string;
 }) {
   return {
     id: r.id,
     title: r.title,
     topic: r.topic,
+    lang: r.lang,
     changeText: r.change_text,
     whyItMatters: r.why_it_matters,
     confidence: r.confidence,
