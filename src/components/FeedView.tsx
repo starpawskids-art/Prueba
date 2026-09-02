@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { LANGUAGES, Language, Pulse } from "@/lib/types";
 import PulseCard from "./PulseCard";
+import Logo from "./Logo";
 
 type RankedPulse = Pulse & { isExploration: boolean };
 
@@ -66,7 +67,7 @@ export default function FeedView() {
   return (
     <div className="flex flex-1 flex-col gap-4 px-4 pb-6 pt-5">
       <header className="flex items-center justify-between">
-        <span className="text-sm font-semibold tracking-wide text-muted">PULSE</span>
+        <Logo size={28} variant="full" />
         {language && <LanguageSwitcher language={language} onChange={changeLanguage} />}
       </header>
 

@@ -7,7 +7,12 @@ import fs from "node:fs";
 // on most hosts is wiped on every redeploy. Unset locally, so local dev is
 // unchanged.
 const dataDir = process.env.DATA_DIR ?? path.join(process.cwd(), "data");
-if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+// turbopackIgnore: DATA_DIR is only known at runtime, so Turbopack can't
+// statically scope this path — without the ignore comment it traces (and
+// bundles) the whole project into the server output "just in case".
+if (!fs.existsSync(/* turbopackIgnore: true */ dataDir)) {
+  fs.mkdirSync(/* turbopackIgnore: true */ dataDir, { recursive: true });
+}
 
 const dbPath = path.join(dataDir, "pulse.db");
 

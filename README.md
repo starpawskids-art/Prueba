@@ -13,10 +13,13 @@ Todo lo demás (ver `docs/PRODUCTO.md`) se construye encima solo si esto funcion
 
 Un pipeline de descubrimiento **real**, no una maqueta con datos falsos:
 
-1. **Ingesta** — tres fuentes públicas, sin API keys: Hacker News (`item`/`topstories`),
-   Wikipedia pageviews (Wikimedia REST API) y GitHub Search (repos nuevos o con actividad
-   reciente). Cada fuente falla de forma independiente (`Promise.allSettled`) sin tumbar el
-   pipeline — ver `src/lib/sources/`.
+1. **Ingesta** — fuentes públicas, todas sin API keys: Hacker News (`item`/`topstories`),
+   Wikipedia pageviews por edición de idioma (Wikimedia REST API), GitHub Search (repos nuevos o
+   con actividad reciente), y RSS de medios reales — BBC News, NPR, Al Jazeera, BBC Mundo,
+   France 24 (ES/FR), Deutsche Welle, ANSA y BBC Brasil (`src/lib/sources/rss.ts`), con su propio
+   parser XML validado (`fast-xml-parser`, con `XMLValidator` explícito — sin eso, un feed roto
+   fallaría en silencio en vez de aparecer como error). Cada fuente falla de forma independiente
+   (`Promise.allSettled`) sin tumbar el pipeline — ver `src/lib/sources/`.
 2. **Deduplicación** — similitud de tokens (Jaccard) entre títulos de distintas fuentes —
    `src/lib/pipeline/dedupe.ts`.
 3. **Detección de momentum** — cada señal se guarda con su métrica anterior; el momentum es la
@@ -148,6 +151,10 @@ más un panel `/admin` con retención, moderación y debug del pipeline de inges
 mobile-first, oscuro, tipografía grande, sin patrones de scroll infinito tipo TikTok — la interfaz
 comunica "radar/inteligencia", no "entretenimiento".
 
+**Marca**: logo real (`src/components/Logo.tsx`) — insignia con degradado violeta→magenta y una
+onda de pulso, en vez del texto plano "PULSE" que había antes. Se usa en el header del feed, el
+onboarding, y como favicon/icono de la app (`src/app/icon.svg`, convención de Next.js App Router).
+
 ## Qué NO está construido (a propósito)
 
 FATE/predicciones, chat privado, gamificación agresiva, monetización, 20 idiomas, autenticación
@@ -173,10 +180,25 @@ No requiere variables de entorno ni API keys — todas las fuentes son públicas
 
 Este entorno de desarrollo restringe el tráfico de salida a una lista concreta de dominios; en la
 práctica eso significa que, **dentro de esta sandbox**, solo la fuente de GitHub responde (Hacker
-News y Wikipedia devuelven error de red — a nivel de infraestructura, no de código —, capturado y
-registrado sin romper el pipeline). Los adaptadores están completos y ya probados contra sus APIs
-reales — se activan solos en cualquier entorno con salida a internet normal (local, Vercel, un
-VPS, etc.), sin tocar código.
+News, Wikipedia y los 9 feeds RSS devuelven error de red — a nivel de infraestructura, no de
+código —, capturado y registrado sin romper el pipeline, cada uno con su propio mensaje de error
+etiquetado). Los adaptadores están completos y probados contra fixtures realistas (ver
+`fetchRssFeed`) — se activan solos en cualquier entorno con salida a internet normal (local,
+Railway, un VPS, etc.), sin tocar código. Nota honesta sobre las URLs de los feeds RSS: están
+elegidas por su estabilidad histórica conocida, pero no he podido verificar en vivo que sigan
+respondiendo hoy exactamente en esas rutas — si alguna cambió, aparecerá como un error aislado y
+etiquetado en `/admin`, sin afectar al resto de fuentes.
+
+### RSS: qué mide "metric" aquí
+
+A diferencia de Hacker News (puntos + comentarios) o Wikipedia (vistas del día), un feed RSS no
+lleva ningún número de popularidad — solo el orden editorial del propio medio. `metric` para RSS
+es una métrica derivada de la posición en ese orden (los primeros titulares puntúan más), la mejor
+señal real disponible en un feed plano — no un número inventado, pero sí más débil que un
+contador de verdad. `src/lib/sources/rss.ts` valida el XML explícitamente
+(`XMLValidator.validate`) antes de parsear: por defecto `fast-xml-parser` no lanza error con XML
+mal formado, solo devuelve un objeto casi vacío en silencio — sin esa validación, un feed roto
+parecería "0 noticias hoy" en vez de un error visible.
 
 ### Multi-idioma: cómo funciona la ingesta
 

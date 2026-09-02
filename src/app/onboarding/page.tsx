@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { LANGUAGES, Language, MAX_CUSTOM_INTERESTS, TOPICS, Topic } from "@/lib/types";
+import Logo from "@/components/Logo";
 
 const MIN_INTERESTS = 3;
 
@@ -68,7 +69,7 @@ export default function OnboardingPage() {
       <div className="flex-1 overflow-y-auto px-6 py-10">
         <div className="flex flex-col gap-8">
           <div className="flex flex-col gap-2">
-            <span className="text-sm font-semibold tracking-wide text-accent">PULSE</span>
+            <Logo size={32} variant="full" />
             <h1 className="text-2xl font-bold leading-tight">¿Qué te interesa seguir?</h1>
             <p className="text-sm text-muted">
               Elige {MIN_INTERESTS} o más. Usaremos esto para priorizar tu feed — y aun así te

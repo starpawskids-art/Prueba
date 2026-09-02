@@ -3,6 +3,7 @@ import db from "../db";
 import { fetchHackerNewsCandidates } from "../sources/hackernews";
 import { fetchWikipediaCandidates } from "../sources/wikipedia";
 import { fetchGithubCandidates } from "../sources/github";
+import { fetchRssFeed, RSS_FEEDS } from "../sources/rss";
 import { RawCandidate } from "../sources/types";
 import { dedupeCandidates } from "./dedupe";
 import { buildChangeText, buildWhyItMatters, computeConfidence } from "./summarize";
@@ -181,6 +182,11 @@ export async function runIngestion(): Promise<IngestResult> {
       label: `Wikipedia (${label})`,
       quality: 0.85,
       fn: () => fetchWikipediaCandidates(code),
+    })),
+    ...RSS_FEEDS.map((feed) => ({
+      label: feed.label,
+      quality: feed.quality,
+      fn: () => fetchRssFeed(feed),
     })),
   ];
 
